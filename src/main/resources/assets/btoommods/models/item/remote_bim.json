@@ -1,0 +1,36 @@
+{
+  "loader": "forge:obj",
+  "model": "btoommods:models/item/remote_bim.obj",
+  "flip-v": true,
+  "detectCullableFaces": false,
+
+  "display": {
+    "thirdperson_righthand": {
+      "scale": [0.004, 0.004, 0.004],
+      "rotation": [0, 180, 0]
+    },
+    "thirdperson_lefthand": {
+      "scale": [0.01, 0.02, 0.02]
+    },
+    "firstperson_righthand": {
+      "rotation": [90, -40, 60],
+      "translation": [3.5, 0.75, 0],
+      "scale": [0.01, 0.01, 0.01]
+    },
+    "firstperson_lefthand": {
+      "rotation": [90, -40, 60],
+      "translation": [3.5, 0.75, 0],
+      "scale": [0.01, 0.01, 0.01]
+    },
+    "ground": {
+      "scale": [0.006, 0.006, 0.006]
+    },
+    "gui": {
+      "scale": [0.015, 0.015, 0.015],
+      "rotation": [90, 0, 0]
+    },
+    "fixed": {
+      "rotation": [-90, -180, 0]
+    }
+  }
+}

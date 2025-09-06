@@ -20,6 +20,19 @@ public class ModItems {
     public static final RegistryObject<Item> BLAZING_BIM = ITEMS.register("blazing_bim",
             () -> new BlazingBimItem(new Item.Properties().tab(ItemGroup.TAB_COMBAT).stacksTo(16)));
 
+    public static final RegistryObject<Item> TIMER_BIM = ITEMS.register("timer_bim",
+            () -> new Item(new Item.Properties().tab(ItemGroup.TAB_COMBAT).stacksTo(1)));
+
+    public static final RegistryObject<Item> REMOTE_BIM = ITEMS.register("remote_bim",
+            () -> new Item(new Item.Properties().tab(ItemGroup.TAB_COMBAT).stacksTo(1)));
+
+    public static final RegistryObject<Item> GAS_BIM = ITEMS.register("gas_bim",
+            () -> new GasBimItem(new Item.Properties().tab(ItemGroup.TAB_COMBAT).stacksTo(16)));
+
+    // “désactivé” (coque) -> ramassable, pas utilisable
+    public static final RegistryObject<Item> GAS_BIM_DISABLED = ITEMS.register("gas_bim_disabled",
+            () -> new Item(new Item.Properties().tab(ItemGroup.TAB_MISC).stacksTo(16)));
+
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);
     }

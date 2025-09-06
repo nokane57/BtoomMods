@@ -30,6 +30,18 @@ public class ModConfigs {
         public final ForgeConfigSpec.IntValue BLAZING_BURN_DURATION;
         public final ForgeConfigSpec.DoubleValue BLAZING_PROJECTILE_SPEED_MULT;
 
+        public final ForgeConfigSpec.DoubleValue GAS_PROJECTILE_SPEED_MULT; // < 1.0 : un peu plus lent qu’un arc
+        public final ForgeConfigSpec.IntValue   GAS_EXPLODE_AFTER_TICKS;    // 3s = 60 ticks
+        public final ForgeConfigSpec.IntValue   GAS_PICKUP_AFTER_TICKS;     // 1s = 20 ticks (après posé)
+        public final ForgeConfigSpec.IntValue   GAS_RING_STEP;              // 15 blocs
+        public final ForgeConfigSpec.IntValue   GAS_MAX_RADIUS;             // 45 blocs (3 anneaux de 15)
+        public final ForgeConfigSpec.IntValue   GAS_EXPAND_STEP_TICKS;      // 2s par palier = 40 ticks
+        public final ForgeConfigSpec.DoubleValue GAS_DMG_INNER_HPS;         // 0-15 : 3 cœurs/sec
+        public final ForgeConfigSpec.DoubleValue GAS_DMG_MID_HPS;           // 15-30 : 2
+        public final ForgeConfigSpec.DoubleValue GAS_DMG_OUTER_HPS;         // 30-45 : 1
+        public final ForgeConfigSpec.BooleanValue GAS_GRAVITY_LIMIT;        // limite de hauteur ?
+        public final ForgeConfigSpec.IntValue   GAS_MAX_ABOVE_GROUND;       // max 5 blocs au-dessus sol
+
         public Common(ForgeConfigSpec.Builder b) {
             b.push("cracker_bim");
 
@@ -52,6 +64,20 @@ public class ModConfigs {
             BLAZING_BURN_DMG_HEARTS       = b.defineInRange("burn_hearts_per_tick", 1.0, 0.0, 50.0); // réservé si tu rajoutes un effet/évènement global
             BLAZING_BURN_DURATION         = b.defineInRange("burn_duration", 40, 1, 20*60*10);
             BLAZING_PROJECTILE_SPEED_MULT = b.defineInRange("projectile_speed_mult", 1.25, 0.1, 10.0);
+            b.pop();
+
+            b.push("gas_bim");
+            GAS_PROJECTILE_SPEED_MULT = b.defineInRange("projectile_speed_mult", 0.85, 0.1, 10.0);
+            GAS_EXPLODE_AFTER_TICKS   = b.defineInRange("explode_after_ticks", 60, 5, 20*60);
+            GAS_PICKUP_AFTER_TICKS    = b.defineInRange("pickup_after_ticks", 20, 0, 20*60);
+            GAS_RING_STEP             = b.defineInRange("ring_step", 15, 5, 64);
+            GAS_MAX_RADIUS            = b.defineInRange("max_radius", 45, 5, 128);
+            GAS_EXPAND_STEP_TICKS     = b.defineInRange("expand_step_ticks", 40, 2, 20*20);
+            GAS_DMG_INNER_HPS         = b.defineInRange("inner_hps", 3.0, 0.0, 50.0);
+            GAS_DMG_MID_HPS           = b.defineInRange("mid_hps",   2.0, 0.0, 50.0);
+            GAS_DMG_OUTER_HPS         = b.defineInRange("outer_hps", 1.0, 0.0, 50.0);
+            GAS_GRAVITY_LIMIT         = b.define("gravity_limit", true);
+            GAS_MAX_ABOVE_GROUND      = b.defineInRange("max_above_ground", 5, 0, 32);
             b.pop();
         }
     }

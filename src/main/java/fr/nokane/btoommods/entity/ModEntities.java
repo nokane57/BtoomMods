@@ -1,7 +1,12 @@
+// fr/nokane/btoommods/entity/ModEntities.java
 package fr.nokane.btoommods.entity;
 
 import fr.nokane.btoommods.Btoommods;
+import fr.nokane.btoommods.entity.item.BlazingBimEntity;
 import fr.nokane.btoommods.entity.item.CrackerBimEntity;
+import fr.nokane.btoommods.entity.item.GasBimEntity;
+import fr.nokane.btoommods.entity.misc.BlazingFireFieldEntity;
+import fr.nokane.btoommods.entity.misc.GasCloudFieldEntity;
 import net.minecraft.entity.EntityClassification;
 import net.minecraft.entity.EntityType;
 import net.minecraft.util.ResourceLocation;
@@ -18,10 +23,44 @@ public class ModEntities {
     public static final RegistryObject<EntityType<CrackerBimEntity>> CRACKER_BIM =
             ENTITIES.register("cracker_bim_projectile", () ->
                     EntityType.Builder.<CrackerBimEntity>of(CrackerBimEntity::new, EntityClassification.MISC)
-                            .sized(0.25F, 0.25F)          // petit projectile
+                            .sized(0.25F, 0.25F)
                             .clientTrackingRange(64)
                             .updateInterval(10)
                             .build(new ResourceLocation(Btoommods.MOD_ID, "cracker_bim_projectile").toString())
+            );
+
+    public static final RegistryObject<EntityType<BlazingBimEntity>> BLAZING_BIM =
+            ENTITIES.register("blazing_bim_projectile", () ->
+                    EntityType.Builder.<BlazingBimEntity>of(BlazingBimEntity::new, EntityClassification.MISC)
+                            .sized(0.25F, 0.25F)
+                            .clientTrackingRange(64)
+                            .updateInterval(10)
+                            .build(new ResourceLocation(Btoommods.MOD_ID, "blazing_bim_projectile").toString())
+            );
+
+    public static final RegistryObject<EntityType<BlazingFireFieldEntity>> BLAZING_FIRE_FIELD =
+            ENTITIES.register("blazing_fire_field", () ->
+                    EntityType.Builder.<BlazingFireFieldEntity>of(BlazingFireFieldEntity::new, EntityClassification.MISC)
+                            .sized(0.1F, 0.1F)
+                            .clientTrackingRange(32)
+                            .updateInterval(20)
+                            .build(new ResourceLocation(Btoommods.MOD_ID, "blazing_fire_field").toString())
+            );
+
+    public static final RegistryObject<EntityType<GasBimEntity>> GAS_BIM =
+            ENTITIES.register("gas_bim_projectile", () ->
+                    EntityType.Builder.<GasBimEntity>of(GasBimEntity::new, EntityClassification.MISC)
+                            .sized(0.25F, 0.25F)
+                            .clientTrackingRange(64).updateInterval(10)
+                            .build(new ResourceLocation(Btoommods.MOD_ID, "gas_bim_projectile").toString())
+            );
+
+    public static final RegistryObject<EntityType<GasCloudFieldEntity>> GAS_CLOUD_FIELD =
+            ENTITIES.register("gas_cloud_field", () ->
+                    EntityType.Builder.<GasCloudFieldEntity>of(GasCloudFieldEntity::new, EntityClassification.MISC)
+                            .sized(0.1F, 0.1F)
+                            .clientTrackingRange(64).updateInterval(20)
+                            .build(new ResourceLocation(Btoommods.MOD_ID, "gas_cloud_field").toString())
             );
 
     public static void register(IEventBus bus) { ENTITIES.register(bus); }

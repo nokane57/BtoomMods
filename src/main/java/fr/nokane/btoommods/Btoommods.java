@@ -2,6 +2,7 @@ package fr.nokane.btoommods;
 
 
 import fr.nokane.btoommods.config.ModConfigs;
+import fr.nokane.btoommods.effect.ModEffects;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.item.ModItems;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -27,8 +28,10 @@ public class Btoommods {
         modEventBus.addListener(this::setup);
 
         ModItems.register(modEventBus);
-        ModEntities.register(FMLJavaModLoadingContext.get().getModEventBus());
+        ModEntities.register(modEventBus);
+        fr.nokane.btoommods.effect.ModEffects.register(modEventBus); // 👈 important pour serveur
     }
+
 
     private void setup(final FMLCommonSetupEvent event) {
         LOGGER.info("[BTOOM MOD] Common setup loaded.");
