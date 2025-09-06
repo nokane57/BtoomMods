@@ -5,6 +5,9 @@ import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.effect.ModEffects;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.item.ModItems;
+import fr.nokane.btoommods.net.Net;
+import fr.nokane.btoommods.particle.ModParticles;
+import fr.nokane.btoommods.radar.RadarCapability;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
@@ -29,11 +32,14 @@ public class Btoommods {
 
         ModItems.register(modEventBus);
         ModEntities.register(modEventBus);
-        fr.nokane.btoommods.effect.ModEffects.register(modEventBus); // 👈 important pour serveur
+        ModParticles.register(modEventBus);
+        ModEffects.register(modEventBus); // 👈 important pour serveur
     }
 
 
     private void setup(final FMLCommonSetupEvent event) {
+        RadarCapability.registerManually();
+        event.enqueueWork(Net::registerMessages);
         LOGGER.info("[BTOOM MOD] Common setup loaded.");
     }
 

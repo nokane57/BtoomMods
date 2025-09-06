@@ -1,8 +1,10 @@
 package fr.nokane.btoommods.item;
 
 import fr.nokane.btoommods.Btoommods;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemGroup;
+import net.minecraft.item.ItemStack;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.RegistryObject;
 import net.minecraftforge.registries.DeferredRegister;
@@ -32,6 +34,11 @@ public class ModItems {
     // “désactivé” (coque) -> ramassable, pas utilisable
     public static final RegistryObject<Item> GAS_BIM_DISABLED = ITEMS.register("gas_bim_disabled",
             () -> new Item(new Item.Properties().tab(ItemGroup.TAB_MISC).stacksTo(16)));
+
+    public static final RegistryObject<Item> RADAR_ITEM =
+            ITEMS.register("radar", () -> new Item(new Item.Properties().stacksTo(64)){
+                @Override public boolean onDroppedByPlayer(ItemStack stack, PlayerEntity player){ return false; } // empêche Q
+            });
 
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);
