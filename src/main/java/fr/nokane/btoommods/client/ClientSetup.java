@@ -19,12 +19,11 @@ import org.lwjgl.glfw.GLFW;
 
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
 public class ClientSetup {
-
+    private static final String KEY_CATEGORY = "key.categories.btoommods";
     private static KeyBinding RADAR_KEY;
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent e) {
-        // Renders d'entités
         RenderingRegistry.registerEntityRenderingHandler(
                 ModEntities.CRACKER_BIM.get(),
                 mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
@@ -46,24 +45,19 @@ public class ClientSetup {
                 EmptyRenderer::new
         );
 
-        // Touche du radar
-        RADAR_KEY = new KeyBinding("key.btoommods.radar", GLFW.GLFW_KEY_R, "key.categories.gameplay");
+        // Touche du radar dans TA catégorie
+        RADAR_KEY = new KeyBinding("key.btoommods.radar", GLFW.GLFW_KEY_R, KEY_CATEGORY);
         ClientRegistry.registerKeyBinding(RADAR_KEY);
 
         GlowClient.install();
-
-        // Tick client (bus général, pas le bus MOD)
         MinecraftForge.EVENT_BUS.addListener(ClientSetup::onClientTick);
     }
 
     private static void onClientTick(TickEvent.ClientTickEvent ev) {
         if (ev.phase != TickEvent.Phase.END) return;
-
-        // Si pas en monde (menu, chargement…), on ne fait rien
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
 
-        // Déclenchement : envoie un C2S au serveur
         while (RADAR_KEY.consumeClick()) {
             Net.CH.sendToServer(new RadarScanC2S());
         }

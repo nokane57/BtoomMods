@@ -3,5 +3,8 @@
   "item.btoommods.blazing_bim": "Blazing Bim",
   "item.btoommods.timer_bim": "Timer Bim",
   "item.btoommods.remote_bim": "Remote Bim",
-  "item.btoommods.gas_bim": "Gas Bim"
+  "item.btoommods.gas_bim": "Gas Bim",
+  "item.btoommods.gas_bim_disabled": "Gas Bim Disabled",
+  "key.categories.btoommods": "Btooom Mods",
+  "key.btoommods.radar": "Radar (scan)"
 }

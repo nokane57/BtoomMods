@@ -26,12 +26,12 @@ public class RadarScanC2S {
                 if (!data.hasImplant()) return; long now = sp.level.getGameTime();
                 // anti-spam
                 if (now < data.getCooldownUntil()) return;
-                data.setCooldownUntil(now + ModConfigs.COMMON.RADAR_COOLDOWN_SECONDS.get());
+                data.setCooldownUntil(now + ModConfigs.COMMON.RADAR_COOLDOWN_TICKS.get());
                 int base = ModConfigs.COMMON.RADAR_BASE_RADIUS.get();
                 int extraPer = ModConfigs.COMMON.RADAR_EXTRA_PER_ITEM.get();
                 int radius = base + data.getBoosters() * extraPer;
-                int activeWindow = ModConfigs.COMMON.RADAR_ACTIVE_WINDOW_SECONDS.get();
-                int glowTicks = ModConfigs.COMMON.RADAR_GLOW_SECONDS.get();
+                int activeWindow = ModConfigs.COMMON.RADAR_ACTIVE_WINDOW.get();
+                int glowTicks = ModConfigs.COMMON.RADAR_GLOW_TICKS.get();
                 List<Integer> foundIds = new ArrayList<>();
                 for (ServerPlayerEntity other : sp.getServer().getPlayerList().getPlayers()) {
                     if (other == sp || other.level != sp.level) continue;

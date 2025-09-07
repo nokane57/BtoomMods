@@ -1,6 +1,6 @@
 {
   "loader": "forge:obj",
-  "model": "btoommods:models/item/gas_bim.obj",
+  "model": "btoommods:models/item/gas_bim_disabled.obj",
   "flip-v": true,
   "detectCullableFaces": false,
 

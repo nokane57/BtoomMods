@@ -2,10 +2,12 @@
 package fr.nokane.btoommods.entity.misc;
 
 import fr.nokane.btoommods.config.ModConfigs;
+import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.particle.ModParticles;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.math.AxisAlignedBB;
@@ -17,8 +19,10 @@ import java.util.Set;
 
 public class GasCloudFieldEntity extends Entity {
     private int age; // ticks
+    private boolean droppedShell = false;
+
     private static final DamageSource GAS_DAMAGE =
-            (new DamageSource("gas_bim")).bypassArmor(); // le gaz ignore l’armure
+            (new DamageSource("gas_bim")).bypassArmor();
 
     public GasCloudFieldEntity(EntityType<? extends GasCloudFieldEntity> type, World level) {
         super(type, level);
@@ -32,9 +36,13 @@ public class GasCloudFieldEntity extends Entity {
         super.tick();
         age++;
 
-        final int step       = ModConfigs.COMMON.GAS_RING_STEP.get();            // 15
-        final int maxR       = ModConfigs.COMMON.GAS_MAX_RADIUS.get();           // 45
-        final int stepTicks  = ModConfigs.COMMON.GAS_EXPAND_STEP_TICKS.get();    // 40 (2s)
+        // fait "tomber" le nuage si pas de sol dessous
+        settleTowardGround();
+
+        final int step      = ModConfigs.COMMON.GAS_RING_STEP.get();           // 15
+        final int maxR      = ModConfigs.COMMON.GAS_MAX_RADIUS.get();          // 45
+        final int stepTicks = ModConfigs.COMMON.GAS_EXPAND_STEP_TICKS.get();   // ex: 40
+
         int stage = Math.min(3, age / stepTicks + 1); // 1..3
         int currentRadius = Math.min(maxR, stage * step);
 
@@ -43,7 +51,7 @@ public class GasCloudFieldEntity extends Entity {
             return;
         }
 
-        // HP/tick = (cœurs/sec) * (2 HP par cœur) / 20 ticks = cœurs/sec * 0.1F
+        // HP/tick à partir de cœurs/seconde (2/20 = 0.1)
         float hpTickInner = ModConfigs.COMMON.GAS_DMG_INNER_HPS.get().floatValue() * 0.1F;
         float hpTickMid   = ModConfigs.COMMON.GAS_DMG_MID_HPS.get().floatValue()   * 0.1F;
         float hpTickOuter = ModConfigs.COMMON.GAS_DMG_OUTER_HPS.get().floatValue() * 0.1F;
@@ -74,8 +82,45 @@ public class GasCloudFieldEntity extends Entity {
             if (hp > 0F) e.hurt(GAS_DAMAGE, hp);
         }
 
-        // durée ~ 3 étapes + une petite traîne
-        if (age > stepTicks * 3 + 40) this.remove();
+        // durée : 3 étapes + petite traîne
+        if (age > stepTicks * 3 + 40) {
+            dropDisabledShellOnce();
+            this.remove();
+        }
+    }
+
+    /** Fait descendre le centre du nuage s’il n’y a pas de support sous lui. */
+    private void settleTowardGround() {
+        BlockPos below = this.blockPosition().below();
+        if (!hasSolidBelowWithin(below, 2)) {
+            // pas de sol proche : descend doucement
+            this.setPos(this.getX(), this.getY() - 0.08, this.getZ());
+        } else {
+            // empêche d'entrer dans le bloc
+            BlockPos ground = findGroundBelow(this.blockPosition(), 64);
+            if (ground != null) {
+                double targetY = ground.getY() + 1.0;
+                if (this.getY() < targetY) {
+                    this.setPos(this.getX(), targetY + 0.01, this.getZ());
+                }
+            }
+        }
+    }
+
+    private boolean hasSolidBelowWithin(BlockPos startBelow, int range) {
+        for (int i = 0; i < range; i++) {
+            BlockPos p = startBelow.below(i);
+            if (level.getBlockState(p).getMaterial().isSolid()) return true;
+        }
+        return false;
+    }
+
+    private BlockPos findGroundBelow(BlockPos start, int maxDown) {
+        for (int i = 0; i < maxDown; i++) {
+            BlockPos p = start.below(i);
+            if (level.getBlockState(p).getMaterial().isSolid()) return p;
+        }
+        return null;
     }
 
     private int blocksAboveGround(LivingEntity e) {
@@ -97,10 +142,18 @@ public class GasCloudFieldEntity extends Entity {
             double rad = r.nextDouble() * radius;
             double x = c.getX() + 0.5 + Math.cos(ang) * rad;
             double z = c.getZ() + 0.5 + Math.sin(ang) * rad;
-            double y = c.getY() + 0.2 + r.nextDouble() * 0.5;
+            double y = this.getY() + 0.2 + r.nextDouble() * 0.5;
 
             level.addParticle(ModParticles.GAS_CLOUD.get(), x, y, z, 0.0, 0.003, 0.0);
         }
+    }
+
+    private void dropDisabledShellOnce() {
+        if (droppedShell || level.isClientSide) return;
+        ItemEntity drop = new ItemEntity(level, this.getX(), this.getY(), this.getZ(),
+                ModItems.GAS_BIM_DISABLED.get().getDefaultInstance());
+        level.addFreshEntity(drop);
+        droppedShell = true;
     }
 
     @Override protected void readAdditionalSaveData(CompoundNBT nbt) { age = nbt.getInt("Age"); }
