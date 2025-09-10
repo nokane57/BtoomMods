@@ -18,6 +18,15 @@ public class ModConfigs {
     }
 
     public static class Common {
+        // -------- STACKS PAR ITEM --------
+        public final ForgeConfigSpec.IntValue CRACKER_STACK;
+        public final ForgeConfigSpec.IntValue BLAZING_STACK;
+        public final ForgeConfigSpec.IntValue TIMER_STACK;
+        public final ForgeConfigSpec.IntValue REMOTE_STACK;
+        public final ForgeConfigSpec.IntValue GAS_STACK;
+        public final ForgeConfigSpec.IntValue GAS_DISABLED_STACK;
+        public final ForgeConfigSpec.IntValue RADAR_STACK;
+
         // -------- CRACKER BIM --------
         public final ForgeConfigSpec.DoubleValue radius;
         public final ForgeConfigSpec.DoubleValue epicenterHearts;
@@ -57,7 +66,7 @@ public class ModConfigs {
         public final ForgeConfigSpec.IntValue RADAR_ACTIVE_WINDOW;     // 5s = 100
         public final ForgeConfigSpec.IntValue RADAR_COOLDOWN_TICKS;    // p.ex. 60
 
-        // -------- REMOTE BIM (NOUVEAU) --------
+        // -------- REMOTE BIM --------
         public final ForgeConfigSpec.DoubleValue REMOTE_RADIUS;                  // dégâts entités (blocs)
         public final ForgeConfigSpec.DoubleValue REMOTE_EPICENTER_HEARTS;        // dégâts centre (cœurs)
         public final ForgeConfigSpec.DoubleValue REMOTE_BLOCK_BLAST;             // force explosion vanilla terrain
@@ -74,11 +83,19 @@ public class ModConfigs {
 
         public Common(ForgeConfigSpec.Builder b) {
 
+            // ========== STACKS PAR ITEM ==========
+            // Chaque section item a sa clé "stack" (1..64)
+
             // -------- CRACKER BIM --------
             b.comment(
                     "FR: Paramètres de la bombe 'cracker' (explosion classique).",
                     "EN: Settings for the 'cracker' bomb (classic explosion)."
             ).push("cracker_bim");
+
+            CRACKER_STACK = b.comment(
+                    "FR: Taille de stack de l'item Cracker.",
+                    "EN: Stack size for Cracker item."
+            ).defineInRange("stack", 1, 1, 64);
 
             radius = b.comment(
                     "FR: Rayon maximal où l'explosion peut blesser (blocs).",
@@ -128,6 +145,11 @@ public class ModConfigs {
                     "EN: Settings for the incendiary bomb (fire strip)."
             ).push("blazing_bim");
 
+            BLAZING_STACK = b.comment(
+                    "FR: Taille de stack de l'item Blazing.",
+                    "EN: Stack size for Blazing item."
+            ).defineInRange("stack", 16, 1, 64);
+
             BLAZING_FIRE_LENGTH = b.comment(
                     "FR: Longueur du tapis de feu (blocs).",
                     "EN: Length of the fire strip (blocks)."
@@ -165,11 +187,29 @@ public class ModConfigs {
 
             b.pop();
 
+            // -------- TIMER BIM --------
+            b.comment(
+                    "FR: Minuteur / détonation temporisée.",
+                    "EN: Timed / delayed detonation."
+            ).push("timer_bim");
+
+            TIMER_STACK = b.comment(
+                    "FR: Taille de stack de l'item Timer.",
+                    "EN: Stack size for Timer item."
+            ).defineInRange("stack", 1, 1, 64);
+
+            b.pop();
+
             // -------- GAS BIM --------
             b.comment(
                     "FR: Paramètres de la bombe à gaz (nuage qui s'étend par anneaux).",
                     "EN: Settings for the gas bomb (cloud expanding in rings)."
             ).push("gas_bim");
+
+            GAS_STACK = b.comment(
+                    "FR: Taille de stack de l'item Gaz.",
+                    "EN: Stack size for Gas item."
+            ).defineInRange("stack", 16, 1, 64);
 
             GAS_PROJECTILE_SPEED_MULT = b.comment(
                     "FR: Multiplicateur de vitesse du projectile gaz ( <1 = plus lent qu'un arc).",
@@ -228,6 +268,19 @@ public class ModConfigs {
 
             b.pop();
 
+            // -------- GAS BIM (désactivé/coque) --------
+            b.comment(
+                    "FR: Coque de bombe gaz (récupérée une fois le gaz dissipé).",
+                    "EN: Gas bomb shell (recoverable after gas dissipates)."
+            ).push("gas_bim_disabled");
+
+            GAS_DISABLED_STACK = b.comment(
+                    "FR: Taille de stack de la coque de bombe gaz.",
+                    "EN: Stack size for gas bomb shell."
+            ).defineInRange("stack", 16, 1, 64);
+
+            b.pop();
+
             // -------- RADAR --------
             b.comment(
                     "FR: Radar implanté: objet greffé, non largable. Un scan met en surbrillance (Glow) les joueurs ACTIFS",
@@ -237,6 +290,11 @@ public class ModConfigs {
                     "    (a player is active if they moved within the activity window below).",
                     "    Detected players also see the scanner glowing. Glow is per-viewer."
             ).push("radar");
+
+            RADAR_STACK = b.comment(
+                    "FR: Taille de stack de l'item Radar.",
+                    "EN: Stack size for Radar item."
+            ).defineInRange("stack", 64, 1, 64);
 
             RADAR_BASE_RADIUS = b.comment(
                     "FR: Portée de base du balayage (en blocs).",
@@ -284,9 +342,13 @@ public class ModConfigs {
                     "    - trigger_radius: portée pour trouver les remotes à déclencher",
                     "    - marker_cooldown_ticks: délai entre envois de marqueur au propriétaire",
                     "    - projectile_speed_mult: vitesse du projectile (× puissance d'arc)",
-                    "EN: Remote-controlled bomb.",
-                    "    See keys above for meanings; values mirror the French description."
+                    "EN: Remote-controlled bomb."
             ).push("remote_bim");
+
+            REMOTE_STACK = b.comment(
+                    "FR: Taille de stack de l'item Remote.",
+                    "EN: Stack size for Remote item."
+            ).defineInRange("stack", 16, 1, 64);
 
             REMOTE_RADIUS = b.comment(
                     "FR: Rayon des dégâts entités (blocs).",
