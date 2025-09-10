@@ -2,6 +2,7 @@
 package fr.nokane.btoommods.client;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.particles.ParticleTypes;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.potion.Effects;
@@ -34,9 +35,22 @@ public final class GlowClient {
             Entity e = mc.level.getEntity(id);
             if (e != null) {
                 e.setGlowing(true);
-                // garder la date d’expiration la plus lointaine si re-scan
                 GLOW_UNTIL.merge(id, until, Math::max);
             }
+        }
+    }
+
+    /** Petit marqueur visuel local pour l’OWNER d’une remote collée */
+    public static void spawnRemoteOwnerMarker(double x, double y, double z){
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return;
+
+        // traits simples et peu coûteux
+        for (int i = 0; i < 10; i++) {
+            mc.level.addParticle(ParticleTypes.CRIT, x, y, z, 0.0, 0.02, 0.0);
+        }
+        for (int i = 0; i < 4; i++) {
+            mc.level.addParticle(ParticleTypes.END_ROD, x, y + 0.1, z, 0.0, 0.01, 0.0);
         }
     }
 
@@ -53,7 +67,6 @@ public final class GlowClient {
             if (now >= en.getValue()){
                 Entity ent = mc.level.getEntity(en.getKey());
                 if (ent != null) {
-                    // ne coupe pas si l’entité a un vrai effet potion GLOWING côté serveur
                     if (ent instanceof LivingEntity) {
                         if (!((LivingEntity) ent).hasEffect(Effects.GLOWING)) {
                             ent.setGlowing(false);

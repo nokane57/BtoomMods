@@ -18,6 +18,7 @@ public class ModConfigs {
     }
 
     public static class Common {
+        // -------- CRACKER BIM --------
         public final ForgeConfigSpec.DoubleValue radius;
         public final ForgeConfigSpec.DoubleValue epicenterHearts;
         public final ForgeConfigSpec.DoubleValue blockBlast;
@@ -27,6 +28,7 @@ public class ModConfigs {
         public final ForgeConfigSpec.IntValue manualBreakMaxBlocks;
         public final ForgeConfigSpec.IntValue lifetimeTicks;
 
+        // -------- BLAZING BIM --------
         public final ForgeConfigSpec.IntValue BLAZING_FIRE_LENGTH;
         public final ForgeConfigSpec.IntValue BLAZING_FIRE_WIDTH;
         public final ForgeConfigSpec.IntValue BLAZING_FIRE_LIFETIME;
@@ -35,6 +37,7 @@ public class ModConfigs {
         public final ForgeConfigSpec.IntValue BLAZING_BURN_DURATION;
         public final ForgeConfigSpec.DoubleValue BLAZING_PROJECTILE_SPEED_MULT;
 
+        // -------- GAS BIM --------
         public final ForgeConfigSpec.DoubleValue GAS_PROJECTILE_SPEED_MULT;
         public final ForgeConfigSpec.IntValue   GAS_EXPLODE_AFTER_TICKS;
         public final ForgeConfigSpec.IntValue   GAS_PICKUP_AFTER_TICKS;
@@ -47,11 +50,27 @@ public class ModConfigs {
         public final ForgeConfigSpec.BooleanValue GAS_GRAVITY_LIMIT;
         public final ForgeConfigSpec.IntValue   GAS_MAX_ABOVE_GROUND;
 
+        // -------- RADAR --------
         public final ForgeConfigSpec.IntValue RADAR_BASE_RADIUS;       // 50
         public final ForgeConfigSpec.IntValue RADAR_EXTRA_PER_ITEM;    // +5 / item en plus
         public final ForgeConfigSpec.IntValue RADAR_GLOW_TICKS;        // 3s = 60
         public final ForgeConfigSpec.IntValue RADAR_ACTIVE_WINDOW;     // 5s = 100
         public final ForgeConfigSpec.IntValue RADAR_COOLDOWN_TICKS;    // p.ex. 60
+
+        // -------- REMOTE BIM (NOUVEAU) --------
+        public final ForgeConfigSpec.DoubleValue REMOTE_RADIUS;                  // dégâts entités (blocs)
+        public final ForgeConfigSpec.DoubleValue REMOTE_EPICENTER_HEARTS;        // dégâts centre (cœurs)
+        public final ForgeConfigSpec.DoubleValue REMOTE_BLOCK_BLAST;             // force explosion vanilla terrain
+        public final ForgeConfigSpec.BooleanValue REMOTE_CAUSES_FIRE;            // feu on/off
+        public final ForgeConfigSpec.EnumValue<ExplosionMode> REMOTE_EXPLOSION_MODE; // NONE / BREAK
+        public final ForgeConfigSpec.BooleanValue REMOTE_MANUAL_BREAK_ENABLED;   // petit nettoyage
+        public final ForgeConfigSpec.IntValue REMOTE_MANUAL_BREAK_MAX_BLOCKS;    // nb blocs max
+        public final ForgeConfigSpec.IntValue REMOTE_LIFETIME_TICKS;             // durée vie (ticks)
+        public final ForgeConfigSpec.IntValue REMOTE_MAX_ACTIVE;                 // limite active/joueur
+        public final ForgeConfigSpec.IntValue REMOTE_SCAN_RADIUS;                // rayon scan (compte/slot)
+        public final ForgeConfigSpec.IntValue REMOTE_TRIGGER_RADIUS;             // rayon déclenchement
+        public final ForgeConfigSpec.IntValue REMOTE_MARKER_COOLDOWN_TICKS;      // cooldown marker (ticks)
+        public final ForgeConfigSpec.DoubleValue REMOTE_PROJECTILE_SPEED_MULT;   // vitesse projectile
 
         public Common(ForgeConfigSpec.Builder b) {
 
@@ -209,6 +228,7 @@ public class ModConfigs {
 
             b.pop();
 
+            // -------- RADAR --------
             b.comment(
                     "FR: Radar implanté: objet greffé, non largable. Un scan met en surbrillance (Glow) les joueurs ACTIFS",
                     "    (un joueur est actif s'il s'est déplacé dans la fenêtre d'activité ci-dessous).",
@@ -248,6 +268,90 @@ public class ModConfigs {
                     "FR: Délai minimal entre deux scans (anti-spam), en ticks.",
                     "EN: Minimum delay between scans (anti-spam), in ticks."
             ).defineInRange("cooldown_ticks", 60, 0, 20*60);
+
+            b.pop();
+
+            // -------- REMOTE BIM --------
+            b.comment(
+                    "FR: Bombe 'remote' (détonation à distance).",
+                    "    - radius: rayon des dégâts entités (blocs)",
+                    "    - epicenter_hearts: dégâts au centre en CŒURS (1 cœur = 2 PV)",
+                    "    - block_blast + explosion_mode/causes_fire: explosion vanilla terrain",
+                    "    - manual_break_*: petit nettoyage de blocs (facile à casser) après l'explosion",
+                    "    - lifetime_ticks: durée de vie (0 = infini tant que la bombe est collée)",
+                    "    - max_active_per_player: nombre max de remotes actives par joueur",
+                    "    - scan_radius: portée de recherche pour compter/assigner les slots",
+                    "    - trigger_radius: portée pour trouver les remotes à déclencher",
+                    "    - marker_cooldown_ticks: délai entre envois de marqueur au propriétaire",
+                    "    - projectile_speed_mult: vitesse du projectile (× puissance d'arc)",
+                    "EN: Remote-controlled bomb.",
+                    "    See keys above for meanings; values mirror the French description."
+            ).push("remote_bim");
+
+            REMOTE_RADIUS = b.comment(
+                    "FR: Rayon des dégâts entités (blocs).",
+                    "EN: Damage radius for living entities (blocks)."
+            ).defineInRange("radius", 12.0D, 0.0D, 64.0D);
+
+            REMOTE_EPICENTER_HEARTS = b.comment(
+                    "FR: Dégâts au centre en CŒURS (1 cœur = 2 PV).",
+                    "EN: Damage at the epicenter in HEARTS (1 heart = 2 HP)."
+            ).defineInRange("epicenter_hearts", 10.0D, 0.0D, 100.0D);
+
+            REMOTE_BLOCK_BLAST = b.comment(
+                    "FR: Puissance d'explosion vanilla contre le terrain.",
+                    "EN: Vanilla explosion strength against blocks."
+            ).defineInRange("block_blast", 0.0D, 0.0D, 10.0D);
+
+            REMOTE_CAUSES_FIRE = b.comment(
+                    "FR: Si vrai, met le feu avec l'explosion vanilla.",
+                    "EN: If true, ignites fire with the vanilla explosion."
+            ).define("causes_fire", false);
+
+            REMOTE_EXPLOSION_MODE = b.comment(
+                    "FR: Mode explosion terrain: NONE (ne casse pas) / BREAK (casse).",
+                    "EN: Terrain mode: NONE (no terrain) / BREAK (break blocks)."
+            ).defineEnum("explosion_mode", ExplosionMode.NONE);
+
+            REMOTE_MANUAL_BREAK_ENABLED = b.comment(
+                    "FR: Active un léger nettoyage de blocs faciles (hardness ≤ 3).",
+                    "EN: Enables a small cleanup of easy blocks (hardness ≤ 3)."
+            ).define("manual_break_enabled", true);
+
+            REMOTE_MANUAL_BREAK_MAX_BLOCKS = b.comment(
+                    "FR: Nombre maximal de blocs cassés par ce nettoyage.",
+                    "EN: Maximum blocks broken by that cleanup."
+            ).defineInRange("manual_break_max_blocks", 12, 0, 200);
+
+            REMOTE_LIFETIME_TICKS = b.comment(
+                    "FR: Durée de vie avant despawn quand NON collée (0 = infini).",
+                    "EN: Lifetime before despawn when NOT stuck (0 = infinite)."
+            ).defineInRange("lifetime_ticks", 0, 0, 12000);
+
+            REMOTE_MAX_ACTIVE = b.comment(
+                    "FR: Nombre maximal de bombes remote actives par joueur.",
+                    "EN: Maximum number of active remote bombs per player."
+            ).defineInRange("max_active_per_player", 8, 1, 64);
+
+            REMOTE_SCAN_RADIUS = b.comment(
+                    "FR: Rayon de scan pour compter les remotes et assigner les slots.",
+                    "EN: Scan radius used to count remotes and assign slots."
+            ).defineInRange("scan_radius", 256, 16, 2048);
+
+            REMOTE_TRIGGER_RADIUS = b.comment(
+                    "FR: Rayon pour trouver les remotes à déclencher (autour du joueur).",
+                    "EN: Radius to find remotes to trigger (around the player)."
+            ).defineInRange("trigger_radius", 256, 16, 4096);
+
+            REMOTE_MARKER_COOLDOWN_TICKS = b.comment(
+                    "FR: Délai entre envois de marqueur (ticks) quand collée.",
+                    "EN: Cooldown between owner marker packets (ticks) while stuck."
+            ).defineInRange("marker_cooldown_ticks", 20, 1, 200);
+
+            REMOTE_PROJECTILE_SPEED_MULT = b.comment(
+                    "FR: Multiplicateur de vitesse du projectile (× puissance d'arc).",
+                    "EN: Projectile speed multiplier (× bow charge power)."
+            ).defineInRange("projectile_speed_mult", 1.20D, 0.1D, 10.0D);
 
             b.pop();
         }

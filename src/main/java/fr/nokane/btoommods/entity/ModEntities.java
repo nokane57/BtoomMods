@@ -5,6 +5,7 @@ import fr.nokane.btoommods.Btoommods;
 import fr.nokane.btoommods.entity.item.BlazingBimEntity;
 import fr.nokane.btoommods.entity.item.CrackerBimEntity;
 import fr.nokane.btoommods.entity.item.GasBimEntity;
+import fr.nokane.btoommods.entity.item.RemoteBimEntity;
 import fr.nokane.btoommods.entity.misc.BlazingFireFieldEntity;
 import fr.nokane.btoommods.entity.misc.GasCloudFieldEntity;
 import net.minecraft.entity.EntityClassification;
@@ -61,6 +62,14 @@ public class ModEntities {
                             .sized(0.1F, 0.1F)
                             .clientTrackingRange(64).updateInterval(20)
                             .build(new ResourceLocation(Btoommods.MOD_ID, "gas_cloud_field").toString())
+            );
+
+    public static final RegistryObject<EntityType<RemoteBimEntity>> REMOTE_BIM =
+            ENTITIES.register("remote_bim", () ->
+                    EntityType.Builder.<RemoteBimEntity>of(RemoteBimEntity::new, EntityClassification.MISC)
+                            .sized(0.1F, 0.1F)
+                            .clientTrackingRange(64).updateInterval(20)
+                            .build(new ResourceLocation(Btoommods.MOD_ID, "remote_bim").toString())
             );
 
     public static void register(IEventBus bus) { ENTITIES.register(bus); }
