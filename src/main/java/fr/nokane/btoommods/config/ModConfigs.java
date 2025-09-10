@@ -56,8 +56,10 @@ public class ModConfigs {
         public final ForgeConfigSpec.DoubleValue GAS_DMG_INNER_HPS;
         public final ForgeConfigSpec.DoubleValue GAS_DMG_MID_HPS;
         public final ForgeConfigSpec.DoubleValue GAS_DMG_OUTER_HPS;
-        public final ForgeConfigSpec.BooleanValue GAS_GRAVITY_LIMIT;
-        public final ForgeConfigSpec.IntValue   GAS_MAX_ABOVE_GROUND;
+        public final ForgeConfigSpec.BooleanValue GAS_GRAVITY_LIMIT;    // ✅ remis
+        public final ForgeConfigSpec.IntValue   GAS_MAX_ABOVE_GROUND;   // ✅ remis
+        public final ForgeConfigSpec.BooleanValue GAS_DMG_BYPASS_ARMOR; // ✅ remis
+        public final ForgeConfigSpec.DoubleValue  GAS_IMPACT_HEARTS;    // ✅ remis
 
         // -------- RADAR --------
         public final ForgeConfigSpec.IntValue RADAR_BASE_RADIUS;       // 50
@@ -82,9 +84,6 @@ public class ModConfigs {
         public final ForgeConfigSpec.DoubleValue REMOTE_PROJECTILE_SPEED_MULT;   // vitesse projectile
 
         public Common(ForgeConfigSpec.Builder b) {
-
-            // ========== STACKS PAR ITEM ==========
-            // Chaque section item a sa clé "stack" (1..64)
 
             // -------- CRACKER BIM --------
             b.comment(
@@ -212,7 +211,7 @@ public class ModConfigs {
             ).defineInRange("stack", 16, 1, 64);
 
             GAS_PROJECTILE_SPEED_MULT = b.comment(
-                    "FR: Multiplicateur de vitesse du projectile gaz ( <1 = plus lent qu'un arc).",
+                    "FR: Multiplicateur de vitesse du projectile gaz (<1 = plus lent qu'un arc).",
                     "EN: Speed multiplier for the gas projectile (<1 = slower than a bow)."
             ).defineInRange("projectile_speed_mult", 0.85, 0.1, 10.0);
 
@@ -241,15 +240,16 @@ public class ModConfigs {
                     "EN: Time between ring expansions (ticks)."
             ).defineInRange("expand_step_ticks", 40, 2, 20*20);
 
+            // ====== défaut = 1 cœur/s partout ======
             GAS_DMG_INNER_HPS = b.comment(
                     "FR: Dégâts en CŒURS PAR SECONDE dans l'anneau 1 (0–ring_step).",
                     "EN: Damage in HEARTS PER SECOND in ring 1 (0–ring_step)."
-            ).defineInRange("inner_hps", 3.0, 0.0, 50.0);
+            ).defineInRange("inner_hps", 1.0, 0.0, 50.0);
 
             GAS_DMG_MID_HPS = b.comment(
                     "FR: Dégâts en CŒURS PAR SECONDE dans l'anneau 2 (ring_step–2×ring_step).",
                     "EN: Damage in HEARTS PER SECOND in ring 2 (ring_step–2×ring_step)."
-            ).defineInRange("mid_hps", 2.0, 0.0, 50.0);
+            ).defineInRange("mid_hps", 1.0, 0.0, 50.0);
 
             GAS_DMG_OUTER_HPS = b.comment(
                     "FR: Dégâts en CŒURS PAR SECONDE dans l'anneau 3 (2×ring_step–3×ring_step).",
@@ -265,6 +265,16 @@ public class ModConfigs {
                     "FR: Hauteur max au-dessus du sol pour être affecté quand gravity_limit = true (blocs).",
                     "EN: Max height above ground to be affected when gravity_limit = true (blocks)."
             ).defineInRange("max_above_ground", 5, 0, 32);
+
+            GAS_DMG_BYPASS_ARMOR = b.comment(
+                    "FR: Les dégâts du gaz ignorent l'armure s'ils sont à true.",
+                    "EN: Gas damage bypasses armor when true."
+            ).define("bypass_armor", true);
+
+            GAS_IMPACT_HEARTS = b.comment(
+                    "FR: Dégâts en CŒURS infligés à l'IMPACT du projectile de gaz sur une entité.",
+                    "EN: Damage in HEARTS dealt on IMPACT when the gas projectile hits an entity."
+            ).defineInRange("impact_hearts", 1.0D, 0.0D, 50.0D);
 
             b.pop();
 

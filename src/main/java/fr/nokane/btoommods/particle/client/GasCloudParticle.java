@@ -12,11 +12,10 @@ public class GasCloudParticle extends SpriteTexturedParticle {
         super(world, x, y, z, vx, vy, vz);
         this.sprites = sprites;
         this.hasPhysics = false;
-        this.gravity = 0.005F;
-        this.lifetime = 40 + random.nextInt(20);
+        this.gravity = 0.02F;                // un peu plus “lourd”
+        this.lifetime = 50 + random.nextInt(30);
         this.quadSize = 0.6F + random.nextFloat() * 0.4F;
-        // si ton PNG est déjà jaune, laisse le blanc :
-        this.rCol = 1F; this.gCol = 1F; this.bCol = 1F;
+        this.rCol = 1F; this.gCol = 1F; this.bCol = 1F; // texture déjà teintée = ok
         this.alpha = 0.35F;
         this.pickSprite(sprites);
     }

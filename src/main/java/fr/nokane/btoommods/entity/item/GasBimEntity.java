@@ -1,4 +1,3 @@
-// fr/nokane/btoommods/entity/item/GasBimEntity.java
 package fr.nokane.btoommods.entity.item;
 
 import fr.nokane.btoommods.config.ModConfigs;
@@ -9,6 +8,7 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.projectile.ProjectileItemEntity;
 import net.minecraft.item.Item;
 import net.minecraft.util.Direction;
+import net.minecraft.util.IndirectEntityDamageSource;
 import net.minecraft.util.SoundCategory;
 import net.minecraft.util.SoundEvents;
 import net.minecraft.util.math.*;
@@ -17,24 +17,21 @@ import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.World;
 
 public class GasBimEntity extends ProjectileItemEntity {
-
-    // horloge
     private int  ticksFromLaunch = 0;
     private long lastGroundHitGameTime = -1;
 
-    // réglages “physiques”
     private static final double GROUND_EPS          = 0.02;
-    private static final double RESTITUTION_GROUND  = 0.35; // rebond vertical sur sol
-    private static final double FRICTION_GROUND     = 0.55; // pertes latérales sur sol
-    private static final double RESTITUTION_WALL    = 0.35; // rebond horizontal murs
+    private static final double RESTITUTION_GROUND  = 0.35;
+    private static final double FRICTION_GROUND     = 0.55;
+    private static final double RESTITUTION_WALL    = 0.35;
     private static final double FRICTION_WALL       = 0.75;
-    private static final double MIN_BOUNCE_UP       = 0.02; // rebond mini
-    private static final double MAX_BOUNCE_UP       = 0.18; // rebond maxi (anti “trampoline”)
-    private static final double STOP_EPS            = 0.04; // seuil d’arrêt des rebonds
+    private static final double MIN_BOUNCE_UP       = 0.02;
+    private static final double MAX_BOUNCE_UP       = 0.18;
+    private static final double STOP_EPS            = 0.04;
 
-    private static final double WALL_VERTICAL_POP   = 0.04; // petit lift sur mur
-    private static final double ENTITY_VERTICAL_POP = 0.03; // petit lift sur entité
-    private static final double POP_SPEED_GATE      = 0.25; // pop seulement si impact assez rapide
+    private static final double WALL_VERTICAL_POP   = 0.04;
+    private static final double ENTITY_VERTICAL_POP = 0.03;
+    private static final double POP_SPEED_GATE      = 0.25;
 
     public GasBimEntity(EntityType<? extends GasBimEntity> type, World level) { super(type, level); }
     public GasBimEntity(EntityType<? extends GasBimEntity> type, World level, LivingEntity owner) { super(type, owner, level); }
@@ -46,7 +43,6 @@ public class GasBimEntity extends ProjectileItemEntity {
         super.tick();
         ticksFromLaunch++;
 
-        // explosion uniquement si “armé” ET au sol
         if (!level.isClientSide) {
             if (ticksFromLaunch >= ModConfigs.COMMON.GAS_EXPLODE_AFTER_TICKS.get() && isGrounded()) {
                 explodeGas();
@@ -54,14 +50,13 @@ public class GasBimEntity extends ProjectileItemEntity {
             }
         }
 
-        // anti-clip : si on est *dans* un bloc qui a une collision shape, recaler au-dessus
+        // anti clip dans les collision shapes (dalles etc.)
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
             double topY = pos.getY() + shape.max(Direction.Axis.Y);
             if (this.getY() < topY + GROUND_EPS) {
                 this.setPos(this.getX(), topY + GROUND_EPS, this.getZ());
-                // amortit pour éviter de re-rentrer dans le bloc
                 this.setDeltaMovement(this.getDeltaMovement().multiply(0.6, 0.0, 0.6));
             }
         }
@@ -69,7 +64,6 @@ public class GasBimEntity extends ProjectileItemEntity {
 
     @Override
     protected void onHit(RayTraceResult hit) {
-        // IMPORTANT: ne pas appeler super.onHit(...) pour éviter la suppression vanilla
         if (hit.getType() != RayTraceResult.Type.BLOCK) return;
 
         BlockRayTraceResult br = (BlockRayTraceResult) hit;
@@ -101,13 +95,11 @@ public class GasBimEntity extends ProjectileItemEntity {
                 this.setDeltaMovement(newVx, newVy, newVz);
                 this.fallDistance = 0.0F;
                 lastGroundHitGameTime = level.getGameTime();
-
                 level.playSound(null, this.blockPosition(),
                         SoundEvents.SLIME_BLOCK_STEP, SoundCategory.PLAYERS, 0.35F, 1.10F);
                 break;
             }
             case DOWN: {
-                // plafond : léger rebond vers le bas + friction
                 Vector3d v = this.getDeltaMovement();
                 this.setDeltaMovement(v.x * 0.7, -Math.abs(v.y) * 0.3, v.z * 0.7);
                 break;
@@ -143,22 +135,31 @@ public class GasBimEntity extends ProjectileItemEntity {
 
     @Override
     protected void onHitEntity(EntityRayTraceResult hit) {
-        // IMPORTANT: ne pas appeler super.onHitEntity(...) (on gère nous-même)
+        // rebond
         Vector3d v = this.getDeltaMovement();
         double addPop = (v.length() > POP_SPEED_GATE) ? ENTITY_VERTICAL_POP : 0.0;
-        this.setDeltaMovement(
-                v.x * 0.6,
-                Math.max(v.y * 0.2, 0.0) + addPop,
-                v.z * 0.6
-        );
+        this.setDeltaMovement(v.x * 0.6, Math.max(v.y * 0.2, 0.0) + addPop, v.z * 0.6);
         level.playSound(null, this.blockPosition(),
                 SoundEvents.SLIME_BLOCK_STEP, SoundCategory.PLAYERS, 0.30F, 1.05F);
+
+        // dégâts d'impact (serveur)
+        if (!level.isClientSide && hit.getEntity() instanceof LivingEntity) {
+            float hearts = ModConfigs.COMMON.GAS_IMPACT_HEARTS.get().floatValue();
+            if (hearts > 0f) {
+                LivingEntity tgt = (LivingEntity) hit.getEntity();
+                // source indirecte pour attribuer au tireur si présent
+                net.minecraft.util.DamageSource src =
+                        (this.getOwner() != null)
+                                ? new IndirectEntityDamageSource("gas_bim_hit", this, this.getOwner()).setProjectile()
+                                : new net.minecraft.util.DamageSource("gas_bim_hit").setProjectile();
+                tgt.hurt(src, hearts * 2.0F);
+            }
+        }
     }
 
-    /** Considère l’entité “au sol” si contact récent ou très proche du top du bloc sous elle. */
     private boolean isGrounded() {
         long now = level.getGameTime();
-        if (now - lastGroundHitGameTime <= 2) return true; // vient de toucher
+        if (now - lastGroundHitGameTime <= 2) return true;
 
         BlockPos below = this.blockPosition().below();
         double topY = topYOf(below);
@@ -167,7 +168,6 @@ public class GasBimEntity extends ProjectileItemEntity {
         return nearSurface && slowY;
     }
 
-    /** Hauteur du haut réel du bloc (gère dalles, neige, escaliers, etc.). */
     private double topYOf(BlockPos pos) {
         VoxelShape s = level.getBlockState(pos).getCollisionShape(level, pos);
         double add = s.isEmpty() ? 1.0 : s.max(Direction.Axis.Y);
@@ -176,8 +176,6 @@ public class GasBimEntity extends ProjectileItemEntity {
 
     private void explodeGas() {
         if (level.isClientSide) return;
-
-        // place le nuage au ras du sol actuel
         BlockPos below = this.blockPosition().below();
         double y = Math.max(this.getY(), topYOf(below)) + 0.01;
 

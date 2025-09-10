@@ -12,6 +12,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.BlockRayTraceResult;
 import net.minecraft.util.math.RayTraceResult;
 import net.minecraft.world.World;
+import net.minecraft.world.gen.Heightmap;
 import net.minecraftforge.fml.network.NetworkHooks;
 
 public class BlazingBimEntity extends ProjectileItemEntity {
@@ -25,12 +26,14 @@ public class BlazingBimEntity extends ProjectileItemEntity {
         super.onHit(hit);
         if (level.isClientSide) { this.remove(); return; }
 
-        // Centre de la croix
         BlockPos center = (hit.getType() == RayTraceResult.Type.BLOCK)
                 ? ((BlockRayTraceResult) hit).getBlockPos().relative(((BlockRayTraceResult) hit).getDirection())
                 : new BlockPos(this.position());
 
-        // Spawn de la zone de flammes
+        // Aligne le centre sur le sol pour éviter un champ trop haut/bas
+        int y = level.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, center.getX(), center.getZ());
+        center = new BlockPos(center.getX(), y, center.getZ());
+
         fr.nokane.btoommods.entity.misc.BlazingFireFieldEntity field =
                 ModEntities.BLAZING_FIRE_FIELD.get().create(level);
         if (field != null) {
