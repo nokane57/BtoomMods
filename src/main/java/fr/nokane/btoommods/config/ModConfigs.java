@@ -83,6 +83,13 @@ public class ModConfigs {
         public final ForgeConfigSpec.IntValue REMOTE_MARKER_COOLDOWN_TICKS;      // cooldown marker (ticks)
         public final ForgeConfigSpec.DoubleValue REMOTE_PROJECTILE_SPEED_MULT;   // vitesse projectile
 
+        // --------------  TIMER BIM -----------------------
+        public final ForgeConfigSpec.IntValue    TIMER_DEFAULT_SECONDS;
+        public final ForgeConfigSpec.DoubleValue TIMER_PROJECTILE_SPEED_MULT;
+        public final ForgeConfigSpec.DoubleValue TIMER_EXPLOSION_STRENGTH;
+        public final ForgeConfigSpec.BooleanValue TIMER_CAUSES_FIRE;
+        public final ForgeConfigSpec.BooleanValue TIMER_BREAK_BLOCKS;
+
         public Common(ForgeConfigSpec.Builder b) {
 
             // -------- CRACKER BIM --------
@@ -187,15 +194,29 @@ public class ModConfigs {
             b.pop();
 
             // -------- TIMER BIM --------
-            b.comment(
-                    "FR: Minuteur / détonation temporisée.",
-                    "EN: Timed / delayed detonation."
-            ).push("timer_bim");
+            b.comment("FR: Minuteur / détonation temporisée.", "EN: Timed / delayed detonation.").push("timer_bim");
 
-            TIMER_STACK = b.comment(
-                    "FR: Taille de stack de l'item Timer.",
-                    "EN: Stack size for Timer item."
-            ).defineInRange("stack", 1, 1, 64);
+            TIMER_STACK = b.comment("Stack size for Timer item.").defineInRange("stack", 1, 1, 64);
+
+// nouveau
+            TIMER_DEFAULT_SECONDS = b.comment("FR: Durée par défaut du compte à rebours (secondes).",
+                            "EN: Default countdown duration (seconds).")
+                    .defineInRange("default_seconds", 10, 1, 300);
+
+            TIMER_PROJECTILE_SPEED_MULT = b.comment("FR: Multiplicateur de vitesse du projectile (× puissance d'arc).",
+                            "EN: Projectile speed multiplier (× bow power).")
+                    .defineInRange("projectile_speed_mult", 1.0D, 0.1D, 10.0D);
+
+            TIMER_EXPLOSION_STRENGTH = b.comment("FR: Force d'explosion vanilla quand le timer atteint 0.",
+                            "EN: Vanilla explosion power when the timer hits 0.")
+                    .defineInRange("explosion_strength", 3.0D, 0.1D, 10.0D);
+
+            TIMER_CAUSES_FIRE = b.comment("FR: L'explosion allume du feu.", "EN: Explosion causes fire.")
+                    .define("causes_fire", false);
+
+            TIMER_BREAK_BLOCKS = b.comment("FR: Casse les blocs (mode BREAK) sinon NONE.",
+                            "EN: Break blocks (BREAK) else NONE.")
+                    .define("break_blocks", false);
 
             b.pop();
 

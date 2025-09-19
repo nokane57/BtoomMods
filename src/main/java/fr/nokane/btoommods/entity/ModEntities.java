@@ -52,7 +52,8 @@ public class ModEntities {
             ENTITIES.register("gas_bim_projectile", () ->
                     EntityType.Builder.<GasBimEntity>of(GasBimEntity::new, EntityClassification.MISC)
                             .sized(0.25F, 0.25F)
-                            .clientTrackingRange(64).updateInterval(10)
+                            .clientTrackingRange(64)
+                            .updateInterval(10)
                             .build(new ResourceLocation(Btoommods.MOD_ID, "gas_bim_projectile").toString())
             );
 
@@ -60,7 +61,8 @@ public class ModEntities {
             ENTITIES.register("gas_cloud_field", () ->
                     EntityType.Builder.<GasCloudFieldEntity>of(GasCloudFieldEntity::new, EntityClassification.MISC)
                             .sized(0.1F, 0.1F)
-                            .clientTrackingRange(64).updateInterval(20)
+                            .clientTrackingRange(64)
+                            .updateInterval(20)
                             .build(new ResourceLocation(Btoommods.MOD_ID, "gas_cloud_field").toString())
             );
 
@@ -68,9 +70,12 @@ public class ModEntities {
             ENTITIES.register("remote_bim", () ->
                     EntityType.Builder.<RemoteBimEntity>of(RemoteBimEntity::new, EntityClassification.MISC)
                             .sized(0.1F, 0.1F)
-                            .clientTrackingRange(64).updateInterval(20)
+                            .clientTrackingRange(64)
+                            .updateInterval(20)
                             .build(new ResourceLocation(Btoommods.MOD_ID, "remote_bim").toString())
             );
 
-    public static void register(IEventBus bus) { ENTITIES.register(bus); }
+    public static void register(IEventBus bus) {
+        ENTITIES.register(bus);
+    }
 }

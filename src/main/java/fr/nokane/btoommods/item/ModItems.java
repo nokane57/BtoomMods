@@ -34,11 +34,6 @@ public class ModItems {
                 }
             });
 
-    public static final RegistryObject<Item> TIMER_BIM = ITEMS.register("timer_bim",
-            // pas de classe dédiée → on utilise directement l’item utilitaire
-            () -> new StackFromConfigItem(new Item.Properties().tab(ItemGroup.TAB_COMBAT),
-                    () -> ModConfigs.COMMON.TIMER_STACK.get()));
-
     public static final RegistryObject<Item> REMOTE_BIM = ITEMS.register("remote_bim",
             () -> new RemoteBimItem(new Item.Properties().tab(ItemGroup.TAB_COMBAT)) {
                 @Override

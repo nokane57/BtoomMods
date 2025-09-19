@@ -1,11 +1,16 @@
+// fr/nokane/btoommods/client/ClientSetup.java
 package fr.nokane.btoommods.client;
 
+import fr.nokane.btoommods.Btoommods;
 import fr.nokane.btoommods.entity.ModEntities;
+import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.net.Net;
 import fr.nokane.btoommods.net.RadarScanC2S;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.SpriteRenderer;
 import net.minecraft.client.settings.KeyBinding;
+import net.minecraft.item.ItemModelsProperties;
+import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -21,6 +26,9 @@ public class ClientSetup {
 
     private static KeyBinding RADAR_KEY;
     private static KeyBinding REMOTE_GUI_KEY;
+    private static KeyBinding TIMER_TOGGLE_KEY;
+    private static KeyBinding TIMER_RESET_KEY;
+    private static KeyBinding TIMER_OFF_KEY;
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent e) {
@@ -51,10 +59,17 @@ public class ClientSetup {
         );
 
         // Keybindings (catégorie perso)
-        RADAR_KEY      = new KeyBinding("key.btoommods.radar", GLFW.GLFW_KEY_R, "key.categories.btoommods");
-        REMOTE_GUI_KEY = new KeyBinding("key.btoommods.remote_bracelet", GLFW.GLFW_KEY_B, "key.categories.btoommods");
+        RADAR_KEY        = new KeyBinding("key.btoommods.radar",           GLFW.GLFW_KEY_R, "key.categories.btoommods");
+        REMOTE_GUI_KEY   = new KeyBinding("key.btoommods.remote_bracelet", GLFW.GLFW_KEY_B, "key.categories.btoommods");
+        TIMER_TOGGLE_KEY = new KeyBinding("key.btoommods.timer_toggle",    GLFW.GLFW_KEY_G, "key.categories.btoommods");
+        TIMER_RESET_KEY  = new KeyBinding("key.btoommods.timer_reset",     GLFW.GLFW_KEY_H, "key.categories.btoommods");
+        TIMER_OFF_KEY    = new KeyBinding("key.btoommods.timer_off",       GLFW.GLFW_KEY_J, "key.categories.btoommods");
+
         ClientRegistry.registerKeyBinding(RADAR_KEY);
         ClientRegistry.registerKeyBinding(REMOTE_GUI_KEY);
+        ClientRegistry.registerKeyBinding(TIMER_TOGGLE_KEY);
+        ClientRegistry.registerKeyBinding(TIMER_RESET_KEY);
+        ClientRegistry.registerKeyBinding(TIMER_OFF_KEY);
 
         GlowClient.install();
 
@@ -75,9 +90,7 @@ public class ClientSetup {
 
         // Ouvrir le GUI du bracelet
         while (REMOTE_GUI_KEY.consumeClick()) {
-            if (mc.player != null) {
-                mc.setScreen(new fr.nokane.btoommods.client.screen.RemoteBraceletScreen());
-            }
+            mc.setScreen(new fr.nokane.btoommods.client.screen.RemoteBraceletScreen());
         }
     }
 }

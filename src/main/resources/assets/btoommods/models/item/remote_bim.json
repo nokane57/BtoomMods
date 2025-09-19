@@ -10,7 +10,8 @@
       "rotation": [0, 180, 0]
     },
     "thirdperson_lefthand": {
-      "scale": [0.01, 0.02, 0.02]
+      "scale": [0.004, 0.004, 0.004],
+      "rotation": [0, 180, 0]
     },
     "firstperson_righthand": {
       "rotation": [90, -40, 60],

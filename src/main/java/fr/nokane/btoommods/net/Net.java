@@ -27,10 +27,20 @@ public final class Net {
         CH.registerMessage(id++, GlowS2C.class,
                 GlowS2C::encode, GlowS2C::decode, GlowS2C::handle);
 
-        CH.registerMessage(id++, RemoteTriggerC2S.class, RemoteTriggerC2S::encode, RemoteTriggerC2S::decode, RemoteTriggerC2S::handle);
-        CH.registerMessage(id++, RemoteOwnerMarkerS2C.class, RemoteOwnerMarkerS2C::encode, RemoteOwnerMarkerS2C::decode, RemoteOwnerMarkerS2C::handle);
-        CH.registerMessage(id++, RemoteQuerySlotsC2S.class, RemoteQuerySlotsC2S::encode, RemoteQuerySlotsC2S::decode, RemoteQuerySlotsC2S::handle, Optional.of(NetworkDirection.PLAY_TO_SERVER));
-        CH.registerMessage(id++, RemoteSlotsS2C.class, RemoteSlotsS2C::encode, RemoteSlotsS2C::decode, RemoteSlotsS2C::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CH.registerMessage(id++, RemoteTriggerC2S.class,
+                RemoteTriggerC2S::encode, RemoteTriggerC2S::decode, RemoteTriggerC2S::handle);
+
+        CH.registerMessage(id++, RemoteOwnerMarkerS2C.class,
+                RemoteOwnerMarkerS2C::encode, RemoteOwnerMarkerS2C::decode, RemoteOwnerMarkerS2C::handle);
+
+        CH.registerMessage(id++, RemoteQuerySlotsC2S.class,
+                RemoteQuerySlotsC2S::encode, RemoteQuerySlotsC2S::decode, RemoteQuerySlotsC2S::handle,
+                Optional.of(NetworkDirection.PLAY_TO_SERVER));
+
+        CH.registerMessage(id++, RemoteSlotsS2C.class,
+                RemoteSlotsS2C::encode, RemoteSlotsS2C::decode, RemoteSlotsS2C::handle,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+
     }
 
     public static void toPlayer(net.minecraft.entity.player.ServerPlayerEntity sp, Object msg){
