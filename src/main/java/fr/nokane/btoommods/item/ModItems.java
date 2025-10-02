@@ -65,6 +65,11 @@ public class ModItems {
                 }
             });
 
+    public static final RegistryObject<Item> TIMER_BIM = ITEMS.register("timer_bim", () ->
+            new TimerBimItem(new Item.Properties().tab(ItemGroup.TAB_COMBAT)));
+
+
+
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);
     }

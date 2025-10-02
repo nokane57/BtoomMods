@@ -1,16 +1,18 @@
-// fr/nokane/btoommods/client/ClientSetup.java
 package fr.nokane.btoommods.client;
 
 import fr.nokane.btoommods.Btoommods;
 import fr.nokane.btoommods.entity.ModEntities;
-import fr.nokane.btoommods.item.ModItems;
+import fr.nokane.btoommods.entity.item.TimerBimProjectileEntity;
+import fr.nokane.btoommods.item.TimerBimItem;
 import fr.nokane.btoommods.net.Net;
 import fr.nokane.btoommods.net.RadarScanC2S;
+import fr.nokane.btoommods.net.TimerKeyC2S;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.SpriteRenderer;
 import net.minecraft.client.settings.KeyBinding;
-import net.minecraft.item.ItemModelsProperties;
-import net.minecraft.util.ResourceLocation;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.CompoundNBT;
+import net.minecraft.util.text.StringTextComponent;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -21,7 +23,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import org.lwjgl.glfw.GLFW;
 
-@Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
+@Mod.EventBusSubscriber(modid = Btoommods.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
 public class ClientSetup {
 
     private static KeyBinding RADAR_KEY;
@@ -57,19 +59,19 @@ public class ClientSetup {
                 ModEntities.REMOTE_BIM.get(),
                 mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
         );
+        RenderingRegistry.registerEntityRenderingHandler(
+                ModEntities.TIMER_BIM_PROJECTILE.get(),
+                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
+        );
 
-        // Keybindings (catégorie perso)
+        // Keybindings
         RADAR_KEY        = new KeyBinding("key.btoommods.radar",           GLFW.GLFW_KEY_R, "key.categories.btoommods");
         REMOTE_GUI_KEY   = new KeyBinding("key.btoommods.remote_bracelet", GLFW.GLFW_KEY_B, "key.categories.btoommods");
         TIMER_TOGGLE_KEY = new KeyBinding("key.btoommods.timer_toggle",    GLFW.GLFW_KEY_G, "key.categories.btoommods");
-        TIMER_RESET_KEY  = new KeyBinding("key.btoommods.timer_reset",     GLFW.GLFW_KEY_H, "key.categories.btoommods");
-        TIMER_OFF_KEY    = new KeyBinding("key.btoommods.timer_off",       GLFW.GLFW_KEY_J, "key.categories.btoommods");
 
         ClientRegistry.registerKeyBinding(RADAR_KEY);
         ClientRegistry.registerKeyBinding(REMOTE_GUI_KEY);
         ClientRegistry.registerKeyBinding(TIMER_TOGGLE_KEY);
-        ClientRegistry.registerKeyBinding(TIMER_RESET_KEY);
-        ClientRegistry.registerKeyBinding(TIMER_OFF_KEY);
 
         GlowClient.install();
 
@@ -91,6 +93,11 @@ public class ClientSetup {
         // Ouvrir le GUI du bracelet
         while (REMOTE_GUI_KEY.consumeClick()) {
             mc.setScreen(new fr.nokane.btoommods.client.screen.RemoteBraceletScreen());
+        }
+
+        // Timer toggle
+        while (TIMER_TOGGLE_KEY.consumeClick()) {
+            Net.CH.sendToServer(new TimerKeyC2S(TimerKeyC2S.Action.TOGGLE));
         }
     }
 }

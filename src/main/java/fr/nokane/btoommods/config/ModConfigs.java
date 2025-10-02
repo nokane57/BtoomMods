@@ -89,6 +89,7 @@ public class ModConfigs {
         public final ForgeConfigSpec.DoubleValue TIMER_EXPLOSION_STRENGTH;
         public final ForgeConfigSpec.BooleanValue TIMER_CAUSES_FIRE;
         public final ForgeConfigSpec.BooleanValue TIMER_BREAK_BLOCKS;
+        public final ForgeConfigSpec.IntValue TIMER_HUD_RADIUS;
 
         public Common(ForgeConfigSpec.Builder b) {
 
@@ -217,6 +218,11 @@ public class ModConfigs {
             TIMER_BREAK_BLOCKS = b.comment("FR: Casse les blocs (mode BREAK) sinon NONE.",
                             "EN: Break blocks (BREAK) else NONE.")
                     .define("break_blocks", false);
+
+            TIMER_HUD_RADIUS = b.comment(
+                    "FR: Distance max (en blocs) à laquelle un joueur peut voir le HUD du Timer BIM posé.",
+                    "EN: Max distance (blocks) where players can see the Timer BIM HUD."
+            ).defineInRange("hud_radius", 16, 0, 128);
 
             b.pop();
 

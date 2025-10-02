@@ -2,10 +2,7 @@
 package fr.nokane.btoommods.entity;
 
 import fr.nokane.btoommods.Btoommods;
-import fr.nokane.btoommods.entity.item.BlazingBimEntity;
-import fr.nokane.btoommods.entity.item.CrackerBimEntity;
-import fr.nokane.btoommods.entity.item.GasBimEntity;
-import fr.nokane.btoommods.entity.item.RemoteBimEntity;
+import fr.nokane.btoommods.entity.item.*;
 import fr.nokane.btoommods.entity.misc.BlazingFireFieldEntity;
 import fr.nokane.btoommods.entity.misc.GasCloudFieldEntity;
 import net.minecraft.entity.EntityClassification;
@@ -74,6 +71,18 @@ public class ModEntities {
                             .updateInterval(20)
                             .build(new ResourceLocation(Btoommods.MOD_ID, "remote_bim").toString())
             );
+
+    public static final RegistryObject<EntityType<TimerBimProjectileEntity>> TIMER_BIM_PROJECTILE =
+            ENTITIES.register("timer_bim_projectile", () ->
+                    EntityType.Builder.<TimerBimProjectileEntity>of(TimerBimProjectileEntity::new, EntityClassification.MISC)
+                            .sized(0.25f, 0.25f)
+                            .clientTrackingRange(64)
+                            .updateInterval(1) // <<< important pour éviter de traverser
+                            .build(new ResourceLocation(Btoommods.MOD_ID, "timer_bim_projectile").toString())
+            );
+
+
+
 
     public static void register(IEventBus bus) {
         ENTITIES.register(bus);

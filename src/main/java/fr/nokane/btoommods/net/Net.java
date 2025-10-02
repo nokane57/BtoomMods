@@ -41,6 +41,7 @@ public final class Net {
                 RemoteSlotsS2C::encode, RemoteSlotsS2C::decode, RemoteSlotsS2C::handle,
                 Optional.of(NetworkDirection.PLAY_TO_CLIENT));
 
+        CH.registerMessage(id++, TimerKeyC2S.class, TimerKeyC2S::encode, TimerKeyC2S::decode, TimerKeyC2S::handle);
     }
 
     public static void toPlayer(net.minecraft.entity.player.ServerPlayerEntity sp, Object msg){

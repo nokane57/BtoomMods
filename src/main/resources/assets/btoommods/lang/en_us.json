@@ -7,5 +7,6 @@
   "item.btoommods.gas_bim_disabled": "Gas Bim Disabled",
   "key.categories.btoommods": "Btooom Mods",
   "key.btoommods.radar": "Radar (scan)",
-  "key.btoommods.remote_bracelet": "Open Remote Bracelet"
+  "key.btoommods.remote_bracelet": "Open Remote Bracelet",
+  "key.btoommods.timer_toggle": "Toggle Timer"
 }
