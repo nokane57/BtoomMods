@@ -56,10 +56,19 @@ public class ModConfigs {
         public final ForgeConfigSpec.DoubleValue GAS_DMG_INNER_HPS;
         public final ForgeConfigSpec.DoubleValue GAS_DMG_MID_HPS;
         public final ForgeConfigSpec.DoubleValue GAS_DMG_OUTER_HPS;
-        public final ForgeConfigSpec.BooleanValue GAS_GRAVITY_LIMIT;    // ✅ remis
-        public final ForgeConfigSpec.IntValue   GAS_MAX_ABOVE_GROUND;   // ✅ remis
-        public final ForgeConfigSpec.BooleanValue GAS_DMG_BYPASS_ARMOR; // ✅ remis
-        public final ForgeConfigSpec.DoubleValue  GAS_IMPACT_HEARTS;    // ✅ remis
+        public final ForgeConfigSpec.BooleanValue GAS_GRAVITY_LIMIT;
+        public final ForgeConfigSpec.IntValue   GAS_MAX_ABOVE_GROUND;
+        public final ForgeConfigSpec.BooleanValue GAS_DMG_BYPASS_ARMOR;
+        public final ForgeConfigSpec.DoubleValue  GAS_IMPACT_HEARTS;
+        public final ForgeConfigSpec.DoubleValue GAS_DAMAGE_HEIGHT;
+
+        // ✅ nouveaux (rebond + friction + physique projectile)
+        public final ForgeConfigSpec.DoubleValue GAS_RESTITUTION_GROUND;
+        public final ForgeConfigSpec.DoubleValue GAS_FRICTION_GROUND;
+        public final ForgeConfigSpec.DoubleValue GAS_RESTITUTION_WALL;
+        public final ForgeConfigSpec.DoubleValue GAS_FRICTION_WALL;
+        public final ForgeConfigSpec.DoubleValue GAS_MAX_BOUNCE_UP;
+        public final ForgeConfigSpec.DoubleValue GAS_STOP_EPS;
 
         // -------- RADAR --------
         public final ForgeConfigSpec.IntValue RADAR_BASE_RADIUS;       // 50
@@ -96,6 +105,7 @@ public class ModConfigs {
         public final ForgeConfigSpec.DoubleValue TIMER_FRICTION_WALL;
         public final ForgeConfigSpec.DoubleValue TIMER_MAX_BOUNCE_UP;
         public final ForgeConfigSpec.DoubleValue TIMER_STOP_EPS;
+        public final ForgeConfigSpec.DoubleValue TIMER_IMPACT_HEARTS;
 
         public Common(ForgeConfigSpec.Builder b) {
 
@@ -253,6 +263,12 @@ public class ModConfigs {
                             "EN: Stop epsilon (higher = stops earlier).")
                     .defineInRange("stop_eps", 0.06D, 0.0D, 0.5D);
 
+            TIMER_IMPACT_HEARTS = b.comment(
+                    "FR: Dégâts en CŒURS infligés à l'IMPACT du projectile Timer sur une entité.",
+                    "EN: Damage in HEARTS dealt on IMPACT when the Timer projectile hits an entity."
+            ).defineInRange("impact_hearts", 1.0D, 0.0D, 50.0D);
+
+
             b.pop();
 
             // -------- GAS BIM --------
@@ -296,7 +312,7 @@ public class ModConfigs {
                     "EN: Time between ring expansions (ticks)."
             ).defineInRange("expand_step_ticks", 40, 2, 20*20);
 
-            // ====== défaut = 1 cœur/s partout ======
+// ===== dégâts =====
             GAS_DMG_INNER_HPS = b.comment(
                     "FR: Dégâts en CŒURS PAR SECONDE dans l'anneau 1 (0–ring_step).",
                     "EN: Damage in HEARTS PER SECOND in ring 1 (0–ring_step)."
@@ -331,6 +347,42 @@ public class ModConfigs {
                     "FR: Dégâts en CŒURS infligés à l'IMPACT du projectile de gaz sur une entité.",
                     "EN: Damage in HEARTS dealt on IMPACT when the gas projectile hits an entity."
             ).defineInRange("impact_hearts", 1.0D, 0.0D, 50.0D);
+
+            GAS_DAMAGE_HEIGHT = b.comment(
+                    "FR: Hauteur verticale du nuage de gaz (blocs).",
+                    "EN: Vertical height of the gas cloud (blocks)."
+            ).defineInRange("damage_height", 2.5D, 0.5D, 16.0D);
+
+// ✅ Ajout physique : rebonds / friction
+            GAS_RESTITUTION_GROUND = b.comment(
+                    "FR: Coefficient de rebond au sol.",
+                    "EN: Ground restitution."
+            ).defineInRange("restitution_ground", 0.35D, 0.0D, 1.0D);
+
+            GAS_FRICTION_GROUND = b.comment(
+                    "FR: Friction horizontale au sol.",
+                    "EN: Ground friction."
+            ).defineInRange("friction_ground", 0.55D, 0.0D, 1.0D);
+
+            GAS_RESTITUTION_WALL = b.comment(
+                    "FR: Coefficient de rebond contre les murs.",
+                    "EN: Wall restitution."
+            ).defineInRange("restitution_wall", 0.35D, 0.0D, 1.0D);
+
+            GAS_FRICTION_WALL = b.comment(
+                    "FR: Friction horizontale contre les murs.",
+                    "EN: Wall friction."
+            ).defineInRange("friction_wall", 0.75D, 0.0D, 1.0D);
+
+            GAS_MAX_BOUNCE_UP = b.comment(
+                    "FR: Rebond vertical maximum.",
+                    "EN: Max vertical bounce."
+            ).defineInRange("max_bounce_up", 0.18D, 0.0D, 1.0D);
+
+            GAS_STOP_EPS = b.comment(
+                    "FR: Tolérance d’arrêt (plus haut = s’arrête plus vite).",
+                    "EN: Stop epsilon (higher = stops earlier)."
+            ).defineInRange("stop_eps", 0.04D, 0.0D, 0.5D);
 
             b.pop();
 

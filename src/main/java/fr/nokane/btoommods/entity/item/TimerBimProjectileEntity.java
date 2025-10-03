@@ -17,8 +17,7 @@ import net.minecraft.network.IPacket;
 import net.minecraft.network.datasync.DataParameter;
 import net.minecraft.network.datasync.DataSerializers;
 import net.minecraft.network.datasync.EntityDataManager;
-import net.minecraft.util.DamageSource;
-import net.minecraft.util.Direction;
+import net.minecraft.util.*;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.shapes.VoxelShape;
 import net.minecraft.util.math.vector.Vector3d;
@@ -28,7 +27,7 @@ import net.minecraftforge.fml.network.NetworkHooks;
 
 public class TimerBimProjectileEntity extends ProjectileItemEntity {
 
-    // ---- Synced data (serveur <-> client) ----
+    // ---- Synced data ----
     private static final DataParameter<Boolean> DATA_ACTIVE =
             EntityDataManager.defineId(TimerBimProjectileEntity.class, DataSerializers.BOOLEAN);
     private static final DataParameter<Boolean> DATA_STARTED =
@@ -112,7 +111,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             this.entityData.set(DATA_REMAINING, remaining);
             if (remaining <= 0) {
                 explodeWithDamage();
-                this.remove(); // 1.16.5
+                this.remove();
                 return;
             }
         }
@@ -125,12 +124,17 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         this.setDeltaMovement(motion.scale(0.98));
     }
 
-    // ---- Collision blocs ----
+    // ---- Collision générique ----
     @Override
     protected void onHit(RayTraceResult hit) {
+        if (hit.getType() == RayTraceResult.Type.ENTITY) {
+            this.onHitEntity((EntityRayTraceResult) hit);
+            return;
+        }
         if (level.isClientSide) return;
         if (hit.getType() != RayTraceResult.Type.BLOCK) return;
 
+        // Gestion des blocs
         BlockRayTraceResult br = (BlockRayTraceResult) hit;
         Direction face = br.getDirection();
         BlockPos bpos = br.getBlockPos();
@@ -200,20 +204,35 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     // ---- Collision entités ----
     @Override
     protected void onHitEntity(EntityRayTraceResult hit) {
-        if (level.isClientSide) return;
-
         Entity target = hit.getEntity();
-        Entity shooter = this.getOwner();
+        if (!level.isClientSide && target instanceof LivingEntity) {
+            LivingEntity living = (LivingEntity) target;
 
-        target.hurt(DamageSource.thrown(this, shooter), 2.0f);
+            // ✅ dégâts configurables à l’impact
+            float dmg = (float)(ModConfigs.COMMON.TIMER_IMPACT_HEARTS.get() * 2.0);
+            target.hurt(new IndirectEntityDamageSource("timer_bim", this, this.getOwner()).setProjectile(), dmg);
 
-        Vector3d v = this.getDeltaMovement();
-        double addPop = (v.length() > POP_SPEED_GATE) ? ENTITY_VERTICAL_POP : 0.0;
-        this.setDeltaMovement(v.x * 0.6, Math.max(v.y * 0.2, 0.0) + addPop, v.z * 0.6);
+            // ✅ rebond avec configs TIMER
+            Vector3d v = this.getDeltaMovement();
+            double restitution = ModConfigs.COMMON.TIMER_RESTITUTION_WALL.get();
+            double maxBounce   = ModConfigs.COMMON.TIMER_MAX_BOUNCE_UP.get();
 
-        if (!hadFirstBounce) {
-            hadFirstBounce = true;
-            pickupDelay = 20;
+            Vector3d rebound = new Vector3d(
+                    -v.x * restitution,
+                    Math.min(Math.abs(v.y) * 0.4 + ENTITY_VERTICAL_POP, maxBounce),
+                    -v.z * restitution
+            );
+
+            this.setDeltaMovement(rebound);
+            this.hasImpulse = true;
+
+            level.playSound(null, this.blockPosition(),
+                    SoundEvents.SLIME_BLOCK_HIT, SoundCategory.PLAYERS, 0.6F, 1.0F);
+
+            if (!hadFirstBounce) {
+                hadFirstBounce = true;
+                pickupDelay = 20;
+            }
         }
     }
 

@@ -19,18 +19,16 @@ import net.minecraft.world.gen.Heightmap;
 import net.minecraftforge.fml.network.NetworkHooks;
 
 import java.util.HashSet;
-import java.util.Set;
 
 public class GasCloudFieldEntity extends Entity {
     private int age; // ticks
     private boolean droppedShell = false;
 
-    // descente & épaisseur du nuage
+    // descente du nuage
     private static final double SINK_SPEED = 0.08;
     private static final double Y_OFFSET_ABOVE_GROUND = 0.75;
-    private static final double CLOUD_HEIGHT = 2.0;
 
-    // >>> IMPORTANT : appliquer le dégât toutes les 10 ticks (≈ temps d'invulnérabilité)
+    // dégâts appliqués toutes les 10 ticks (≈ temps d'invulnérabilité vanilla)
     private static final int HURT_PERIOD_TICKS = 10;
 
     public GasCloudFieldEntity(EntityType<? extends GasCloudFieldEntity> type, World level) {
@@ -59,12 +57,11 @@ public class GasCloudFieldEntity extends Entity {
             spawnParticles(currentRadius);
         } else {
             // ---- SERVEUR : dégâts ----
-            // N'appliquer que toutes les 10 ticks (évite la perte dans l'invulnérabilité)
             if ((age % HURT_PERIOD_TICKS) == 0) {
                 applyGasDamage(currentRadius, step);
             }
 
-            // fin de vie
+            // fin de vie du nuage
             if (age > stepTicks * 3 + 40) {
                 dropDisabledShellOnce();
                 this.remove();
@@ -79,12 +76,12 @@ public class GasCloudFieldEntity extends Entity {
     }
 
     private void applyGasDamage(int currentRadius, int step) {
-        // valeurs configurées en CŒURS / SECONDE
+        // Config en CŒURS / SECONDE
         final double innerHps = ModConfigs.COMMON.GAS_DMG_INNER_HPS.get();
         final double midHps   = ModConfigs.COMMON.GAS_DMG_MID_HPS.get();
         final double outerHps = ModConfigs.COMMON.GAS_DMG_OUTER_HPS.get();
 
-        // conversion en HP par application (toutes les 10 ticks)
+        // Conversion en HP par application (toutes les 10 ticks)
         final float innerHp = hpPerPeriod(innerHps);
         final float midHp   = hpPerPeriod(midHps);
         final float outerHp = hpPerPeriod(outerHps);
@@ -93,42 +90,42 @@ public class GasCloudFieldEntity extends Entity {
 
         BlockPos c = this.blockPosition();
         double yMin = this.getY() - 0.20;
-        double yMax = this.getY() + CLOUD_HEIGHT;
+        double yMax = this.getY() + ModConfigs.COMMON.GAS_DAMAGE_HEIGHT.get(); // ← hauteur configurable
 
         AxisAlignedBB aabb = new AxisAlignedBB(
                 c.getX() - currentRadius, yMin, c.getZ() - currentRadius,
                 c.getX() + currentRadius + 1, yMax, c.getZ() + currentRadius + 1
         );
 
-        // seuils des anneaux (clampés par currentRadius)
+        // seuils fixes des anneaux
         final double r1 = step;
-        final double r2 = 2.0 * step;
-        final double r3 = 3.0 * step;
+        final double r2 = step * 2.0;
+        final double r3 = step * 3.0;
 
         DamageSource base = new DamageSource("gas_bim");
         if (bypassArmor) base = base.bypassArmor();
 
         for (LivingEntity e : new HashSet<>(level.getEntitiesOfClass(LivingEntity.class, aabb, LivingEntity::isAlive))) {
-            // distance horizontale au centre
+            // distance horizontale
             double dx = e.getX() - (c.getX() + 0.5);
             double dz = e.getZ() - (c.getZ() + 0.5);
             double d  = Math.sqrt(dx*dx + dz*dz);
 
-            // rien hors du rayon courant
+            // rien hors du nuage
             if (d > currentRadius) continue;
 
-            // limite de “hauteur au-dessus du sol”, si activée
+            // limite de hauteur au-dessus du sol
             if (ModConfigs.COMMON.GAS_GRAVITY_LIMIT.get()) {
                 int above = blocksAboveGround(e);
                 if (above > ModConfigs.COMMON.GAS_MAX_ABOVE_GROUND.get()) continue;
             }
 
             float hp = 0F;
-            if (d <= Math.min(r1, currentRadius)) {
+            if (d <= r1) {
                 hp = innerHp;
-            } else if (currentRadius > r1 && d <= Math.min(r2, currentRadius)) {
+            } else if (d <= r2) {
                 hp = midHp;
-            } else if (currentRadius > r2 && d <= Math.min(r3, currentRadius)) {
+            } else if (d <= r3) {
                 hp = outerHp;
             }
 
