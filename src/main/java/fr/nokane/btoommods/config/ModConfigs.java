@@ -90,6 +90,12 @@ public class ModConfigs {
         public final ForgeConfigSpec.BooleanValue TIMER_CAUSES_FIRE;
         public final ForgeConfigSpec.BooleanValue TIMER_BREAK_BLOCKS;
         public final ForgeConfigSpec.IntValue TIMER_HUD_RADIUS;
+        public final ForgeConfigSpec.DoubleValue TIMER_RESTITUTION_GROUND;
+        public final ForgeConfigSpec.DoubleValue TIMER_FRICTION_GROUND;
+        public final ForgeConfigSpec.DoubleValue TIMER_RESTITUTION_WALL;
+        public final ForgeConfigSpec.DoubleValue TIMER_FRICTION_WALL;
+        public final ForgeConfigSpec.DoubleValue TIMER_MAX_BOUNCE_UP;
+        public final ForgeConfigSpec.DoubleValue TIMER_STOP_EPS;
 
         public Common(ForgeConfigSpec.Builder b) {
 
@@ -199,7 +205,6 @@ public class ModConfigs {
 
             TIMER_STACK = b.comment("Stack size for Timer item.").defineInRange("stack", 1, 1, 64);
 
-// nouveau
             TIMER_DEFAULT_SECONDS = b.comment("FR: Durée par défaut du compte à rebours (secondes).",
                             "EN: Default countdown duration (seconds).")
                     .defineInRange("default_seconds", 10, 1, 300);
@@ -223,6 +228,30 @@ public class ModConfigs {
                     "FR: Distance max (en blocs) à laquelle un joueur peut voir le HUD du Timer BIM posé.",
                     "EN: Max distance (blocks) where players can see the Timer BIM HUD."
             ).defineInRange("hud_radius", 16, 0, 128);
+
+            TIMER_RESTITUTION_GROUND = b.comment("FR: Coefficient de rebond au sol (0 = pas de rebond, 1 = rebond parfait).",
+                            "EN: Ground restitution (0 = no bounce, 1 = perfect bounce).")
+                    .defineInRange("restitution_ground", 0.2D, 0.0D, 1.0D);
+
+            TIMER_FRICTION_GROUND = b.comment("FR: Friction horizontale au sol.",
+                            "EN: Ground friction.")
+                    .defineInRange("friction_ground", 0.4D, 0.0D, 1.0D);
+
+            TIMER_RESTITUTION_WALL = b.comment("FR: Coefficient de rebond contre les murs.",
+                            "EN: Wall restitution.")
+                    .defineInRange("restitution_wall", 0.2D, 0.0D, 1.0D);
+
+            TIMER_FRICTION_WALL = b.comment("FR: Friction horizontale contre les murs.",
+                            "EN: Wall friction.")
+                    .defineInRange("friction_wall", 0.6D, 0.0D, 1.0D);
+
+            TIMER_MAX_BOUNCE_UP = b.comment("FR: Rebond vertical max.",
+                            "EN: Max vertical bounce.")
+                    .defineInRange("max_bounce_up", 0.12D, 0.0D, 1.0D);
+
+            TIMER_STOP_EPS = b.comment("FR: Tolérance d’arrêt (plus haut = s’arrête plus vite).",
+                            "EN: Stop epsilon (higher = stops earlier).")
+                    .defineInRange("stop_eps", 0.06D, 0.0D, 0.5D);
 
             b.pop();
 

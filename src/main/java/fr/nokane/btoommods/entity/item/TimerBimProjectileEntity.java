@@ -1,5 +1,6 @@
 package fr.nokane.btoommods.entity.item;
 
+import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.item.TimerBimItem;
@@ -28,26 +29,19 @@ import net.minecraftforge.fml.network.NetworkHooks;
 public class TimerBimProjectileEntity extends ProjectileItemEntity {
 
     // ---- Synced data (serveur <-> client) ----
-    private static final DataParameter<Boolean> DATA_ACTIVE   =
+    private static final DataParameter<Boolean> DATA_ACTIVE =
             EntityDataManager.defineId(TimerBimProjectileEntity.class, DataSerializers.BOOLEAN);
-    private static final DataParameter<Boolean> DATA_STARTED  =
+    private static final DataParameter<Boolean> DATA_STARTED =
             EntityDataManager.defineId(TimerBimProjectileEntity.class, DataSerializers.BOOLEAN);
     private static final DataParameter<Integer> DATA_REMAINING =
             EntityDataManager.defineId(TimerBimProjectileEntity.class, DataSerializers.INT);
 
-    // ---- Physique (mêmes constantes que GasBim) ----
-    private static final double GROUND_EPS          = 0.02;
-    private static final double RESTITUTION_GROUND  = 0.35;
-    private static final double FRICTION_GROUND     = 0.55;
-    private static final double RESTITUTION_WALL    = 0.35;
-    private static final double FRICTION_WALL       = 0.75;
-    private static final double MIN_BOUNCE_UP       = 0.02;
-    private static final double MAX_BOUNCE_UP       = 0.18;
-    private static final double STOP_EPS            = 0.04;
-
-    private static final double WALL_VERTICAL_POP   = 0.04;
-    private static final double ENTITY_VERTICAL_POP = 0.03;
-    private static final double POP_SPEED_GATE      = 0.25;
+    // ---- Constantes fixes ----
+    private static final double GROUND_EPS = 0.02;
+    private static final double MIN_BOUNCE_UP = 0.01;
+    private static final double WALL_VERTICAL_POP = 0.02;
+    private static final double ENTITY_VERTICAL_POP = 0.02;
+    private static final double POP_SPEED_GATE = 0.3;
 
     // ---- Locaux ----
     private boolean hadFirstBounce = false;
@@ -70,7 +64,10 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         this.entityData.set(DATA_REMAINING, hasStarted ? Math.max(0, remaining) : TimerBimItem.getMaxTicks());
     }
 
-    @Override protected Item getDefaultItem() { return ModItems.TIMER_BIM.get(); }
+    @Override
+    protected Item getDefaultItem() {
+        return ModItems.TIMER_BIM.get();
+    }
 
     @Override
     protected void defineSynchedData() {
@@ -83,7 +80,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     // ---- Tick principal ----
     @Override
     public void tick() {
-        // 1) Raytrace manuel AVANT le tick vanilla (anti “tunnel”)
+        // 1) Raytrace manuel
         RayTraceResult hitResult = ProjectileHelper.getHitResult(this, this::canHitEntity);
         if (hitResult.getType() != RayTraceResult.Type.MISS) {
             this.onHit(hitResult);
@@ -98,19 +95,18 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             this.setDeltaMovement(m.x, m.y - 0.04, m.z);
         }
 
-        // 4) Anti-clip (comme GasBim) : si on se retrouve dans une shape, recoller au topY
+        // 4) Anti-clip
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
             double topY = pos.getY() + shape.max(Direction.Axis.Y);
             if (this.getY() < topY + GROUND_EPS) {
                 this.setPos(this.getX(), topY + GROUND_EPS, this.getZ());
-                // stoppe la composante verticale, amortit l’horizontale
                 this.setDeltaMovement(this.getDeltaMovement().multiply(0.6, 0.0, 0.6));
             }
         }
 
-        // 5) Décompte du timer
+        // 5) Timer
         if (!level.isClientSide && isActive() && getRemainingTicks() > 0) {
             int remaining = getRemainingTicks() - 1;
             this.entityData.set(DATA_REMAINING, remaining);
@@ -121,15 +117,15 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             }
         }
 
-        // 6) Délai ramassage
+        // 6) Pickup delay
         if (pickupDelay > 0) pickupDelay--;
 
-        // 7) Frottements de l’air (léger)
+        // 7) Air friction
         Vector3d motion = this.getDeltaMovement();
         this.setDeltaMovement(motion.scale(0.98));
     }
 
-    // ---- Collision blocs (rebond style GasBim) ----
+    // ---- Collision blocs ----
     @Override
     protected void onHit(RayTraceResult hit) {
         if (level.isClientSide) return;
@@ -140,21 +136,28 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         BlockPos bpos = br.getBlockPos();
         Vector3d loc = br.getLocation();
 
+        double restitutionGround = ModConfigs.COMMON.TIMER_RESTITUTION_GROUND.get();
+        double frictionGround = ModConfigs.COMMON.TIMER_FRICTION_GROUND.get();
+        double restitutionWall = ModConfigs.COMMON.TIMER_RESTITUTION_WALL.get();
+        double frictionWall = ModConfigs.COMMON.TIMER_FRICTION_WALL.get();
+        double maxBounceUp = ModConfigs.COMMON.TIMER_MAX_BOUNCE_UP.get();
+        double stopEps = ModConfigs.COMMON.TIMER_STOP_EPS.get();
+
         switch (face) {
             case UP: {
                 double topY = topYOf(bpos);
                 this.setPos(loc.x, Math.max(loc.y, topY) + GROUND_EPS, loc.z);
 
                 Vector3d v = this.getDeltaMovement();
-                double newVx = v.x * FRICTION_GROUND;
-                double newVz = v.z * FRICTION_GROUND;
+                double newVx = v.x * frictionGround;
+                double newVz = v.z * frictionGround;
 
-                double newVy = Math.abs(v.y) * RESTITUTION_GROUND;
+                double newVy = Math.abs(v.y) * restitutionGround;
                 newVy = Math.max(newVy, MIN_BOUNCE_UP);
-                newVy = Math.min(newVy, MAX_BOUNCE_UP);
+                newVy = Math.min(newVy, maxBounceUp);
 
                 double horiz = Math.hypot(newVx, newVz);
-                if (newVy < STOP_EPS && horiz < 0.05) {
+                if (newVy < stopEps && horiz < 0.05) {
                     this.setDeltaMovement(0.0, 0.0, 0.0);
                     this.fallDistance = 0.0F;
                     break;
@@ -164,19 +167,14 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
                 this.fallDistance = 0.0F;
                 break;
             }
-            case DOWN: {
-                Vector3d v = this.getDeltaMovement();
-                this.setDeltaMovement(v.x * 0.7, -Math.abs(v.y) * 0.3, v.z * 0.7);
-                break;
-            }
             case NORTH:
             case SOUTH: {
                 Vector3d v = this.getDeltaMovement();
                 double addPop = (v.length() > POP_SPEED_GATE) ? WALL_VERTICAL_POP : 0.0;
-                double newVx = v.x * FRICTION_WALL;
+                double newVx = v.x * frictionWall;
                 double newVy = Math.max(v.y * 0.25, 0.0) + addPop;
-                newVy = Math.min(newVy, MAX_BOUNCE_UP * 0.6);
-                double newVz = -v.z * RESTITUTION_WALL;
+                newVy = Math.min(newVy, maxBounceUp * 0.6);
+                double newVz = -v.z * restitutionWall;
                 this.setDeltaMovement(newVx, newVy, newVz);
                 break;
             }
@@ -184,10 +182,10 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             case WEST: {
                 Vector3d v = this.getDeltaMovement();
                 double addPop = (v.length() > POP_SPEED_GATE) ? WALL_VERTICAL_POP : 0.0;
-                double newVx = -v.x * RESTITUTION_WALL;
+                double newVx = -v.x * restitutionWall;
                 double newVy = Math.max(v.y * 0.25, 0.0) + addPop;
-                newVy = Math.min(newVy, MAX_BOUNCE_UP * 0.6);
-                double newVz = v.z * FRICTION_WALL;
+                newVy = Math.min(newVy, maxBounceUp * 0.6);
+                double newVz = v.z * frictionWall;
                 this.setDeltaMovement(newVx, newVy, newVz);
                 break;
             }
@@ -199,7 +197,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         }
     }
 
-    // ---- Collision entités (rebond + léger dégât) ----
+    // ---- Collision entités ----
     @Override
     protected void onHitEntity(EntityRayTraceResult hit) {
         if (level.isClientSide) return;
@@ -219,7 +217,6 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         }
     }
 
-    // ---- Util ----
     private double topYOf(BlockPos pos) {
         VoxelShape s = level.getBlockState(pos).getCollisionShape(level, pos);
         double add = s.isEmpty() ? 1.0 : s.max(Direction.Axis.Y);
@@ -283,7 +280,6 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         tag.putInt("PickupDelay", this.pickupDelay);
     }
 
-    // ---- Réseau ----
     @Override
     public IPacket<?> getAddEntityPacket() {
         return NetworkHooks.getEntitySpawningPacket(this);

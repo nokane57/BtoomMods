@@ -154,4 +154,6 @@ public class TimerBimItem extends Item {
                 ModConfigs.COMMON.TIMER_CAUSES_FIRE.get(),
                 ModConfigs.COMMON.TIMER_BREAK_BLOCKS.get() ? Explosion.Mode.BREAK : Explosion.Mode.NONE);
     }
+
+
 }
