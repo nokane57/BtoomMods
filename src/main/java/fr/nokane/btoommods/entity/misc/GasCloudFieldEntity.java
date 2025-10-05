@@ -1,4 +1,3 @@
-// fr/nokane/btoommods/entity/misc/GasCloudFieldEntity.java
 package fr.nokane.btoommods.entity.misc;
 
 import fr.nokane.btoommods.config.ModConfigs;
@@ -15,20 +14,15 @@ import net.minecraft.util.math.*;
 import net.minecraft.util.math.shapes.VoxelShape;
 import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.World;
-import net.minecraft.world.gen.Heightmap;
 import net.minecraftforge.fml.network.NetworkHooks;
 
 import java.util.HashSet;
+import java.util.Random;
 
 public class GasCloudFieldEntity extends Entity {
-    private int age; // ticks
+
+    private int age;
     private boolean droppedShell = false;
-
-    // descente du nuage
-    private static final double SINK_SPEED = 0.08;
-    private static final double Y_OFFSET_ABOVE_GROUND = 0.75;
-
-    // dégâts appliqués toutes les 10 ticks (≈ temps d'invulnérabilité vanilla)
     private static final int HURT_PERIOD_TICKS = 10;
 
     public GasCloudFieldEntity(EntityType<? extends GasCloudFieldEntity> type, World level) {
@@ -36,165 +30,105 @@ public class GasCloudFieldEntity extends Entity {
         this.noPhysics = true;
     }
 
-    @Override protected void defineSynchedData() {}
+    @Override
+    protected void defineSynchedData() {}
 
     @Override
     public void tick() {
         super.tick();
         age++;
 
-        // fait “ramper” le nuage vers le sol
-        settleTowardGround();
+        // === Maintien sur le terrain ===
+        stayAttachedToGround();
 
-        final int step      = ModConfigs.COMMON.GAS_RING_STEP.get();
-        final int maxR      = ModConfigs.COMMON.GAS_MAX_RADIUS.get();
-        final int stepTicks = ModConfigs.COMMON.GAS_EXPAND_STEP_TICKS.get();
-
-        int stage = Math.min(3, age / stepTicks + 1); // 1..3
-        int currentRadius = Math.min(maxR, stage * step);
+        int radius = ModConfigs.GAS.RADIUS.get();
+        double dmgHearts = ModConfigs.GAS.GAS_DAMAGE_HEARTH.get();
+        double dmgStormHearts = ModConfigs.GAS.GAS_STORM_DAMAGE_HEARTH.get();
 
         if (level.isClientSide) {
-            spawnParticles(currentRadius);
-        } else {
-            // ---- SERVEUR : dégâts ----
-            if ((age % HURT_PERIOD_TICKS) == 0) {
-                applyGasDamage(currentRadius, step);
-            }
+            spawnParticles(radius);
+            return;
+        }
 
-            // fin de vie du nuage
-            if (age > stepTicks * 3 + 40) {
-                dropDisabledShellOnce();
-                this.remove();
+        // === Dégâts ===
+        if (age % HURT_PERIOD_TICKS == 0) {
+            boolean isRaining = level.isRainingAt(this.blockPosition());
+            double hearts = isRaining ? dmgStormHearts : dmgHearts;
+            float dmgHP = (float) (hearts * 2.0 * HURT_PERIOD_TICKS / 20.0);
+
+            double minY = this.getY() + ModConfigs.GAS.GAS_MIN_HEIGHT.get();
+            double maxY = this.getY() + ModConfigs.GAS.GAS_MAX_HEIGHT.get();
+
+            AxisAlignedBB aabb = new AxisAlignedBB(
+                    getX() - radius, minY, getZ() - radius,
+                    getX() + radius, maxY, getZ() + radius
+            );
+
+            DamageSource gas = new DamageSource("gas_bim");
+            if (ModConfigs.GAS.GAS_DMG_BYPASS_ARMOR.get())
+                gas = gas.bypassArmor();
+
+            for (LivingEntity e : new HashSet<>(level.getEntitiesOfClass(LivingEntity.class, aabb, LivingEntity::isAlive))) {
+                e.hurt(gas, dmgHP);
             }
+        }
+
+        // === Fin de vie ===
+        if (age > ModConfigs.GAS.GAS_EXPLODE_AFTER_TICKS.get() + 200) {
+            dropDisabledShellOnce();
+            remove();
         }
     }
 
-    /** Convertit (cœurs/s) -> HP par période de HURT_PERIOD_TICKS. */
-    private static float hpPerPeriod(double heartsPerSecond) {
-        // 1 cœur = 2 HP ; période = HURT_PERIOD_TICKS ; 20 ticks = 1s
-        return (float)(heartsPerSecond * 2.0 * HURT_PERIOD_TICKS / 20.0);
-    }
+    /**
+     * Fait en sorte que le gaz colle au relief du terrain
+     * — il ne flotte plus dans les airs.
+     */
+    private void stayAttachedToGround() {
+        // on scanne autour pour trouver la hauteur moyenne du sol sous le gaz
+        int radius = 4;
+        double totalY = 0.0;
+        int samples = 0;
 
-    private void applyGasDamage(int currentRadius, int step) {
-        // Config en CŒURS / SECONDE
-        final double innerHps = ModConfigs.COMMON.GAS_DMG_INNER_HPS.get();
-        final double midHps   = ModConfigs.COMMON.GAS_DMG_MID_HPS.get();
-        final double outerHps = ModConfigs.COMMON.GAS_DMG_OUTER_HPS.get();
-
-        // Conversion en HP par application (toutes les 10 ticks)
-        final float innerHp = hpPerPeriod(innerHps);
-        final float midHp   = hpPerPeriod(midHps);
-        final float outerHp = hpPerPeriod(outerHps);
-
-        final boolean bypassArmor = ModConfigs.COMMON.GAS_DMG_BYPASS_ARMOR.get();
-
-        BlockPos c = this.blockPosition();
-        double yMin = this.getY() - 0.20;
-        double yMax = this.getY() + ModConfigs.COMMON.GAS_DAMAGE_HEIGHT.get(); // ← hauteur configurable
-
-        AxisAlignedBB aabb = new AxisAlignedBB(
-                c.getX() - currentRadius, yMin, c.getZ() - currentRadius,
-                c.getX() + currentRadius + 1, yMax, c.getZ() + currentRadius + 1
-        );
-
-        // seuils fixes des anneaux
-        final double r1 = step;
-        final double r2 = step * 2.0;
-        final double r3 = step * 3.0;
-
-        DamageSource base = new DamageSource("gas_bim");
-        if (bypassArmor) base = base.bypassArmor();
-
-        for (LivingEntity e : new HashSet<>(level.getEntitiesOfClass(LivingEntity.class, aabb, LivingEntity::isAlive))) {
-            // distance horizontale
-            double dx = e.getX() - (c.getX() + 0.5);
-            double dz = e.getZ() - (c.getZ() + 0.5);
-            double d  = Math.sqrt(dx*dx + dz*dz);
-
-            // rien hors du nuage
-            if (d > currentRadius) continue;
-
-            // limite de hauteur au-dessus du sol
-            if (ModConfigs.COMMON.GAS_GRAVITY_LIMIT.get()) {
-                int above = blocksAboveGround(e);
-                if (above > ModConfigs.COMMON.GAS_MAX_ABOVE_GROUND.get()) continue;
-            }
-
-            float hp = 0F;
-            if (d <= r1) {
-                hp = innerHp;
-            } else if (d <= r2) {
-                hp = midHp;
-            } else if (d <= r3) {
-                hp = outerHp;
-            }
-
-            if (hp > 0F) {
-                e.hurt(base, hp);
+        BlockPos center = this.blockPosition();
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                BlockPos check = center.offset(dx, 0, dz);
+                double groundY = findGroundY(check);
+                if (!Double.isNaN(groundY)) {
+                    totalY += groundY;
+                    samples++;
+                }
             }
         }
-    }
 
-    /** Descend vers le haut du bloc solide juste dessous, sans traverser. */
-    private void settleTowardGround() {
-        BlockPos below = this.blockPosition().below();
-        double topY = topYOf(below);
-        double targetY = topY + Y_OFFSET_ABOVE_GROUND;
-
-        if (this.getY() > targetY + 0.01) {
-            double dy = Math.min(SINK_SPEED, this.getY() - targetY);
-            this.setPos(this.getX(), this.getY() - dy, this.getZ());
-        } else if (this.getY() < targetY) {
+        if (samples > 0) {
+            double avgGroundY = totalY / samples;
+            double targetY = avgGroundY + 0.75; // un peu au-dessus du sol
             this.setPos(this.getX(), targetY, this.getZ());
         }
     }
 
-    private BlockPos snapColumnToTopSolid(BlockPos colXZ, int fromY) {
-        Vector3d start = new Vector3d(colXZ.getX() + 0.5, fromY, colXZ.getZ() + 0.5);
-        Vector3d end   = new Vector3d(colXZ.getX() + 0.5, fromY - 256, colXZ.getZ() + 0.5);
-        RayTraceContext ctx = new RayTraceContext(
-                start, end,
-                RayTraceContext.BlockMode.COLLIDER,
-                RayTraceContext.FluidMode.NONE,
-                this
-        );
-        RayTraceResult rt = level.clip(ctx);
-
-        if (rt.getType() == RayTraceResult.Type.BLOCK) {
-            BlockRayTraceResult br = (BlockRayTraceResult) rt;
-            BlockPos hit = br.getBlockPos();
-            Direction face = br.getDirection();
-            BlockPos top = (face == Direction.UP) ? hit.above() : hit.relative(face);
-            if (level.getBlockState(top.below()).isFaceSturdy(level, top.below(), Direction.UP)) {
-                return top;
+    /**
+     * Retourne la hauteur Y du sol sous une position donnée.
+     */
+    private double findGroundY(BlockPos pos) {
+        // Descend jusqu’à trouver un bloc solide
+        for (int y = pos.getY(); y >= 0; y--) {
+            BlockPos p = new BlockPos(pos.getX(), y, pos.getZ());
+            VoxelShape shape = level.getBlockState(p).getCollisionShape(level, p);
+            if (!shape.isEmpty()) {
+                return y + shape.max(Direction.Axis.Y);
             }
         }
-
-        int y = level.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, colXZ.getX(), colXZ.getZ());
-        return new BlockPos(colXZ.getX(), y, colXZ.getZ());
-    }
-
-    private double topYOf(BlockPos pos) {
-        VoxelShape s = level.getBlockState(pos).getCollisionShape(level, pos);
-        double add = s.isEmpty() ? 1.0 : s.max(Direction.Axis.Y);
-        return pos.getY() + add;
-    }
-
-    private int blocksAboveGround(LivingEntity e) {
-        BlockPos pos = e.blockPosition();
-        for (int i = 0; i <= 32; i++) {
-            BlockPos p = pos.below(i);
-            if (level.getBlockState(p).getMaterial().isSolid()) return i;
-        }
-        return 999;
+        // rien trouvé (vide, au-dessus du vide)
+        return Double.NaN;
     }
 
     private void spawnParticles(int radius) {
+        Random r = this.level.random;
         BlockPos c = this.blockPosition();
-        java.util.Random r = this.level.random;
-
         int samples = 80 + radius * 4;
-        int fromY = (int)Math.ceil(this.getY() + 16);
 
         for (int i = 0; i < samples; i++) {
             double ang = r.nextDouble() * Math.PI * 2.0;
@@ -202,12 +136,11 @@ public class GasCloudFieldEntity extends Entity {
             double px = c.getX() + 0.5 + Math.cos(ang) * rad;
             double pz = c.getZ() + 0.5 + Math.sin(ang) * rad;
 
-            BlockPos ground = snapColumnToTopSolid(
-                    new BlockPos(MathHelper.floor(px), fromY, MathHelper.floor(pz)), fromY);
+            // on aligne aussi la hauteur de la particule sur le relief
+            double groundY = findGroundY(new BlockPos(px, this.getY(), pz));
+            double py = (Double.isNaN(groundY) ? this.getY() : groundY + 0.75);
 
-            double py = ground.getY() + 0.02 + r.nextDouble() * 0.15;
-
-            level.addParticle(ModParticles.GAS_CLOUD.get(), px, py, pz, 0.0, 0.003, 0.0);
+            level.addParticle(ModParticles.GAS_CLOUD.get(), px, py, pz, 0.0, 0.002, 0.0);
         }
     }
 

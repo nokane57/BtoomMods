@@ -12,19 +12,29 @@ import java.util.function.Supplier;
 
 public class RemoteTriggerC2S {
     private final int slot; // 1..8
-    public RemoteTriggerC2S(int slot){ this.slot = Math.max(1, Math.min(8, slot)); }
 
-    public static void encode(RemoteTriggerC2S m, PacketBuffer b){ b.writeVarInt(m.slot); }
-    public static RemoteTriggerC2S decode(PacketBuffer b){ return new RemoteTriggerC2S(b.readVarInt()); }
+    public RemoteTriggerC2S(int slot) {
+        this.slot = Math.max(1, Math.min(8, slot));
+    }
 
-    public static void handle(RemoteTriggerC2S msg, Supplier<NetworkEvent.Context> ctx){
-        NetworkEvent.Context c = ctx.get();
-        c.enqueueWork(() -> {
-            ServerPlayerEntity sp = c.getSender();
+    public static void encode(RemoteTriggerC2S msg, PacketBuffer buf) {
+        buf.writeVarInt(msg.slot);
+    }
+
+    public static RemoteTriggerC2S decode(PacketBuffer buf) {
+        return new RemoteTriggerC2S(buf.readVarInt());
+    }
+
+    public static void handle(RemoteTriggerC2S msg, Supplier<NetworkEvent.Context> ctxSup) {
+        NetworkEvent.Context ctx = ctxSup.get();
+        ctx.enqueueWork(() -> {
+            ServerPlayerEntity sp = ctx.getSender();
             if (sp == null) return;
 
             ServerWorld sw = sp.getLevel();
-            int triggerRadius = ModConfigs.COMMON.REMOTE_TRIGGER_RADIUS.get();
+
+            // ✅ Lire dans la config REMOTE
+            int triggerRadius = ModConfigs.REMOTE.REMOTE_TRIGGER_RADIUS.get();
 
             AxisAlignedBB box = sp.getBoundingBox().inflate(triggerRadius);
 
@@ -34,6 +44,6 @@ public class RemoteTriggerC2S {
                             && e.getSlot() == msg.slot
             ).forEach(RemoteBimEntity::detonateNow);
         });
-        c.setPacketHandled(true);
+        ctx.setPacketHandled(true);
     }
 }

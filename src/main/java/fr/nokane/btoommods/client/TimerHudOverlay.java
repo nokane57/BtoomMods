@@ -6,7 +6,9 @@ import fr.nokane.btoommods.Btoommods;
 import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.item.TimerBimProjectileEntity;
 import fr.nokane.btoommods.item.TimerBimItem;
+import fr.nokane.btoommods.sound.ModSounds;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.audio.SimpleSound;
 import net.minecraft.client.gui.AbstractGui;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.entity.Entity;
@@ -23,6 +25,9 @@ public class TimerHudOverlay extends AbstractGui {
 
     private static final ResourceLocation HUD_TEXTURE =
             new ResourceLocation(Btoommods.MOD_ID, "textures/gui/timer_hud.png");
+
+    // --- Pour suivre le dernier affichage de secondes ---
+    private static int lastDisplayedSeconds = -1;
 
     @SubscribeEvent
     public static void onRenderOverlay(RenderGameOverlayEvent.Post event) {
@@ -41,7 +46,7 @@ public class TimerHudOverlay extends AbstractGui {
 
         // --- Cas 2 : projectile Timer BIM proche ---
         if (secs < 0) {
-            double radius = ModConfigs.COMMON.TIMER_HUD_RADIUS.get();
+            double radius = ModConfigs.TIMER.HUD_RADIUS.get();
             Entity nearestProj = mc.level.getEntities(mc.player,
                             mc.player.getBoundingBox().inflate(radius),
                             e -> e instanceof TimerBimProjectileEntity)
@@ -55,9 +60,9 @@ public class TimerHudOverlay extends AbstractGui {
             }
         }
 
-        // --- Cas 3 : item Timer BIM actif au sol proche ---
+        // --- Cas 3 : item Timer BIM actif au sol ---
         if (secs < 0) {
-            double radius = ModConfigs.COMMON.TIMER_HUD_RADIUS.get();
+            double radius = ModConfigs.TIMER.HUD_RADIUS.get();
             Entity nearestItem = mc.level.getEntities(mc.player,
                             mc.player.getBoundingBox().inflate(radius),
                             e -> e instanceof ItemEntity &&
@@ -72,21 +77,31 @@ public class TimerHudOverlay extends AbstractGui {
             }
         }
 
-        if (secs < 0) return;
+        // --- Rien à afficher ---
+        if (secs < 0) {
+            lastDisplayedSeconds = -1;
+            return;
+        }
 
-        // --- Placement en haut à droite ---
+        // --- Joue le "PI" à chaque changement de seconde ---
+        if (secs != lastDisplayedSeconds && secs > 0) {
+            mc.getSoundManager().play(SimpleSound.forUI(ModSounds.PI_ITEM.get(), 1.0F));
+            lastDisplayedSeconds = secs;
+        }
+
+        // --- Placement du HUD ---
         int screenW = mc.getWindow().getGuiScaledWidth();
         int x = screenW - 64 - 5;
         int y = 5;
 
         MatrixStack matrix = event.getMatrixStack();
 
-        // --- Dessiner la texture HUD (64x64) ---
+        // --- Dessine la texture du timer ---
         RenderSystem.color4f(1f, 1f, 1f, 1f);
         mc.getTextureManager().bind(HUD_TEXTURE);
         blit(matrix, x, y, 0, 0, 64, 64, 64, 64);
 
-        // --- Texte affiché ---
+        // --- Affiche les secondes ---
         String text = String.format("%02d", secs);
         int color = 0x00FF00; // vert constant
 

@@ -4,30 +4,24 @@ import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.item.TimerBimItem;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
+import fr.nokane.btoommods.sound.ModSounds;
+import net.minecraft.entity.*;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.ProjectileHelper;
 import net.minecraft.entity.projectile.ProjectileItemEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.network.IPacket;
-import net.minecraft.network.datasync.DataParameter;
-import net.minecraft.network.datasync.DataSerializers;
-import net.minecraft.network.datasync.EntityDataManager;
+import net.minecraft.network.datasync.*;
 import net.minecraft.util.*;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.shapes.VoxelShape;
 import net.minecraft.util.math.vector.Vector3d;
-import net.minecraft.world.Explosion;
 import net.minecraft.world.World;
 import net.minecraftforge.fml.network.NetworkHooks;
 
 public class TimerBimProjectileEntity extends ProjectileItemEntity {
 
-    // ---- Synced data ----
     private static final DataParameter<Boolean> DATA_ACTIVE =
             EntityDataManager.defineId(TimerBimProjectileEntity.class, DataSerializers.BOOLEAN);
     private static final DataParameter<Boolean> DATA_STARTED =
@@ -35,37 +29,18 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     private static final DataParameter<Integer> DATA_REMAINING =
             EntityDataManager.defineId(TimerBimProjectileEntity.class, DataSerializers.INT);
 
-    // ---- Constantes fixes ----
     private static final double GROUND_EPS = 0.02;
-    private static final double MIN_BOUNCE_UP = 0.01;
-    private static final double WALL_VERTICAL_POP = 0.02;
-    private static final double ENTITY_VERTICAL_POP = 0.02;
-    private static final double POP_SPEED_GATE = 0.3;
 
-    // ---- Locaux ----
     private boolean hadFirstBounce = false;
-    private int pickupDelay = 20; // ticks avant ramassage
+    private int pickupDelay = 20;
+    private long lastGroundHitTime = -1;
 
     public TimerBimProjectileEntity(EntityType<? extends TimerBimProjectileEntity> type, World world) {
         super(type, world);
-        this.noPhysics = false;
     }
 
     public TimerBimProjectileEntity(World world, LivingEntity owner) {
         super(ModEntities.TIMER_BIM_PROJECTILE.get(), owner, world);
-        this.noPhysics = false;
-    }
-
-    // ---- NBT initial pour le timer ----
-    public void setTimerState(boolean active, boolean hasStarted, int remaining) {
-        this.entityData.set(DATA_ACTIVE, active);
-        this.entityData.set(DATA_STARTED, hasStarted);
-        this.entityData.set(DATA_REMAINING, hasStarted ? Math.max(0, remaining) : TimerBimItem.getMaxTicks());
-    }
-
-    @Override
-    protected Item getDefaultItem() {
-        return ModItems.TIMER_BIM.get();
     }
 
     @Override
@@ -76,25 +51,28 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         this.entityData.define(DATA_REMAINING, TimerBimItem.getMaxTicks());
     }
 
-    // ---- Tick principal ----
+    @Override
+    protected Item getDefaultItem() {
+        return ModItems.TIMER_BIM.get();
+    }
+
+    public void setTimerState(boolean active, boolean hasStarted, int remaining) {
+        this.entityData.set(DATA_ACTIVE, active);
+        this.entityData.set(DATA_STARTED, hasStarted);
+        this.entityData.set(DATA_REMAINING, hasStarted ? Math.max(0, remaining) : TimerBimItem.getMaxTicks());
+    }
+
     @Override
     public void tick() {
-        // 1) Raytrace manuel
-        RayTraceResult hitResult = ProjectileHelper.getHitResult(this, this::canHitEntity);
-        if (hitResult.getType() != RayTraceResult.Type.MISS) {
-            this.onHit(hitResult);
-        }
-
-        // 2) Tick vanilla
         super.tick();
 
-        // 3) Gravité
+        // Gravité
         if (!this.isNoGravity()) {
             Vector3d m = this.getDeltaMovement();
-            this.setDeltaMovement(m.x, m.y - 0.04, m.z);
+            this.setDeltaMovement(m.x, m.y - ModConfigs.TIMER.POIDS_PROJECTILE.get(), m.z);
         }
 
-        // 4) Anti-clip
+        // Anti-enfoncement
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -105,92 +83,101 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             }
         }
 
-        // 5) Timer
+        // Timer (serveur uniquement)
         if (!level.isClientSide && isActive() && getRemainingTicks() > 0) {
             int remaining = getRemainingTicks() - 1;
             this.entityData.set(DATA_REMAINING, remaining);
             if (remaining <= 0) {
-                explodeWithDamage();
+                TimerBimItem.explodeAndConsume(level, getX(), getY(), getZ());
                 this.remove();
                 return;
             }
         }
 
-        // 6) Pickup delay
         if (pickupDelay > 0) pickupDelay--;
-
-        // 7) Air friction
-        Vector3d motion = this.getDeltaMovement();
-        this.setDeltaMovement(motion.scale(0.98));
     }
 
-    // ---- Collision générique ----
     @Override
     protected void onHit(RayTraceResult hit) {
         if (hit.getType() == RayTraceResult.Type.ENTITY) {
             this.onHitEntity((EntityRayTraceResult) hit);
             return;
         }
-        if (level.isClientSide) return;
-        if (hit.getType() != RayTraceResult.Type.BLOCK) return;
+        if (level.isClientSide || hit.getType() != RayTraceResult.Type.BLOCK) return;
 
-        // Gestion des blocs
         BlockRayTraceResult br = (BlockRayTraceResult) hit;
         Direction face = br.getDirection();
         BlockPos bpos = br.getBlockPos();
         Vector3d loc = br.getLocation();
 
-        double restitutionGround = ModConfigs.COMMON.TIMER_RESTITUTION_GROUND.get();
-        double frictionGround = ModConfigs.COMMON.TIMER_FRICTION_GROUND.get();
-        double restitutionWall = ModConfigs.COMMON.TIMER_RESTITUTION_WALL.get();
-        double frictionWall = ModConfigs.COMMON.TIMER_FRICTION_WALL.get();
-        double maxBounceUp = ModConfigs.COMMON.TIMER_MAX_BOUNCE_UP.get();
-        double stopEps = ModConfigs.COMMON.TIMER_STOP_EPS.get();
+        // paramètres physiques
+        double restitutionGround = ModConfigs.TIMER.RESTITUTION_GROUND.get();
+        double frictionGround    = ModConfigs.TIMER.FRICTION_GROUND.get();
+        double restitutionWall   = 0.45;
+        double frictionWall      = 0.75;
+        double maxBounceUp       = 0.3;
+        double stopEps           = 0.04;
+        double popSpeedGate      = 0.25;
+        double wallVerticalPop   = 0.05;
 
         switch (face) {
             case UP: {
-                double topY = topYOf(bpos);
+                double topY = bpos.getY() + level.getBlockState(bpos).getCollisionShape(level, bpos).max(Direction.Axis.Y);
                 this.setPos(loc.x, Math.max(loc.y, topY) + GROUND_EPS, loc.z);
 
                 Vector3d v = this.getDeltaMovement();
                 double newVx = v.x * frictionGround;
                 double newVz = v.z * frictionGround;
-
                 double newVy = Math.abs(v.y) * restitutionGround;
-                newVy = Math.max(newVy, MIN_BOUNCE_UP);
+                newVy = Math.max(newVy, 0.02);
                 newVy = Math.min(newVy, maxBounceUp);
 
                 double horiz = Math.hypot(newVx, newVz);
                 if (newVy < stopEps && horiz < 0.05) {
                     this.setDeltaMovement(0.0, 0.0, 0.0);
                     this.fallDistance = 0.0F;
+                    lastGroundHitTime = level.getGameTime();
                     break;
                 }
 
                 this.setDeltaMovement(newVx, newVy, newVz);
                 this.fallDistance = 0.0F;
+                lastGroundHitTime = level.getGameTime();
+
+                // 🔊 Son de rebond
+                level.playSound(null, this.blockPosition(),
+                        ModSounds.REBOND_ITEM.get(), SoundCategory.PLAYERS,
+                        0.8F, 1.0F + level.random.nextFloat() * 0.2F);
                 break;
             }
             case NORTH:
             case SOUTH: {
                 Vector3d v = this.getDeltaMovement();
-                double addPop = (v.length() > POP_SPEED_GATE) ? WALL_VERTICAL_POP : 0.0;
+                double addPop = (v.length() > popSpeedGate) ? wallVerticalPop : 0.0;
                 double newVx = v.x * frictionWall;
                 double newVy = Math.max(v.y * 0.25, 0.0) + addPop;
                 newVy = Math.min(newVy, maxBounceUp * 0.6);
                 double newVz = -v.z * restitutionWall;
                 this.setDeltaMovement(newVx, newVy, newVz);
+
+                level.playSound(null, this.blockPosition(),
+                        ModSounds.REBOND_ITEM.get(), SoundCategory.PLAYERS,
+                        0.7F, 0.9F + level.random.nextFloat() * 0.3F);
                 break;
             }
             case EAST:
             case WEST: {
                 Vector3d v = this.getDeltaMovement();
-                double addPop = (v.length() > POP_SPEED_GATE) ? WALL_VERTICAL_POP : 0.0;
+                double addPop = (v.length() > popSpeedGate) ? wallVerticalPop : 0.0;
                 double newVx = -v.x * restitutionWall;
                 double newVy = Math.max(v.y * 0.25, 0.0) + addPop;
                 newVy = Math.min(newVy, maxBounceUp * 0.6);
                 double newVz = v.z * frictionWall;
                 this.setDeltaMovement(newVx, newVy, newVz);
+
+                level.playSound(null, this.blockPosition(),
+                        ModSounds.REBOND_ITEM.get(), SoundCategory.PLAYERS,
+                        0.7F, 0.9F + level.random.nextFloat() * 0.3F);
                 break;
             }
         }
@@ -201,75 +188,25 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         }
     }
 
-    // ---- Collision entités ----
     @Override
     protected void onHitEntity(EntityRayTraceResult hit) {
         Entity target = hit.getEntity();
         if (!level.isClientSide && target instanceof LivingEntity) {
-            LivingEntity living = (LivingEntity) target;
-
-            // ✅ dégâts configurables à l’impact
-            float dmg = (float)(ModConfigs.COMMON.TIMER_IMPACT_HEARTS.get() * 2.0);
+            float dmg = (float) (ModConfigs.TIMER.IMPACT_HEARTS.get() * 2.0);
             target.hurt(new IndirectEntityDamageSource("timer_bim", this, this.getOwner()).setProjectile(), dmg);
-
-            // ✅ rebond avec configs TIMER
-            Vector3d v = this.getDeltaMovement();
-            double restitution = ModConfigs.COMMON.TIMER_RESTITUTION_WALL.get();
-            double maxBounce   = ModConfigs.COMMON.TIMER_MAX_BOUNCE_UP.get();
-
-            Vector3d rebound = new Vector3d(
-                    -v.x * restitution,
-                    Math.min(Math.abs(v.y) * 0.4 + ENTITY_VERTICAL_POP, maxBounce),
-                    -v.z * restitution
-            );
-
-            this.setDeltaMovement(rebound);
-            this.hasImpulse = true;
-
-            level.playSound(null, this.blockPosition(),
-                    SoundEvents.SLIME_BLOCK_HIT, SoundCategory.PLAYERS, 0.6F, 1.0F);
-
-            if (!hadFirstBounce) {
-                hadFirstBounce = true;
-                pickupDelay = 20;
-            }
         }
     }
 
-    private double topYOf(BlockPos pos) {
-        VoxelShape s = level.getBlockState(pos).getCollisionShape(level, pos);
-        double add = s.isEmpty() ? 1.0 : s.max(Direction.Axis.Y);
-        return pos.getY() + add;
-    }
-
-    private void explodeWithDamage() {
-        TimerBimItem.explodeAndConsume(level, getX(), getY(), getZ());
-
-        double radius = 7.0;
-        level.getEntities(this, this.getBoundingBox().inflate(radius)).forEach(e -> {
-            double dist = this.distanceTo(e);
-            if (dist <= radius) {
-                double factor = 1.0 - (dist / radius);
-                float damage = (float) (18.0 * factor);
-                if (damage > 0) {
-                    e.hurt(DamageSource.explosion((Explosion) null), damage);
-                }
-            }
-        });
-    }
-
-    // ---- Pickup ----
     @Override
     public void playerTouch(PlayerEntity player) {
         if (level.isClientSide) return;
         if (!hadFirstBounce || pickupDelay > 0) return;
+        if (!isGrounded()) return;
 
-        ItemStack stack = this.getItem();
-        stack = stack.isEmpty() ? new ItemStack(ModItems.TIMER_BIM.get()) : stack.copy();
-
+        ItemStack stack = new ItemStack(ModItems.TIMER_BIM.get());
         CompoundNBT tag = stack.getOrCreateTag();
-        tag.putBoolean(TimerBimItem.NBT_HAS_STARTED, this.hasStarted());
         tag.putBoolean(TimerBimItem.NBT_ACTIVE, this.isActive());
+        tag.putBoolean(TimerBimItem.NBT_HAS_STARTED, this.hasStarted());
         tag.putInt(TimerBimItem.NBT_REMAINING, Math.max(0, this.getRemainingTicks()));
         stack.setTag(tag);
 
@@ -278,34 +215,23 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         }
     }
 
-    // ---- Save/Load ----
-    @Override
-    public void readAdditionalSaveData(CompoundNBT tag) {
-        super.readAdditionalSaveData(tag);
-        this.entityData.set(DATA_ACTIVE, tag.getBoolean("Active"));
-        this.entityData.set(DATA_STARTED, tag.getBoolean("HasStarted"));
-        this.entityData.set(DATA_REMAINING, tag.getInt("Remaining"));
-        this.hadFirstBounce = tag.getBoolean("FirstBounce");
-        this.pickupDelay = tag.getInt("PickupDelay");
+    private boolean isGrounded() {
+        long now = level.getGameTime();
+        if (now - lastGroundHitTime <= 2) return true;
+        BlockPos below = this.blockPosition().below();
+        double topY = below.getY() + level.getBlockState(below).getCollisionShape(level, below).max(Direction.Axis.Y);
+        boolean nearSurface = (this.getY() - topY) <= 0.06;
+        boolean slowY = Math.abs(this.getDeltaMovement().y) < 0.08;
+        return nearSurface && slowY;
     }
 
-    @Override
-    public void addAdditionalSaveData(CompoundNBT tag) {
-        super.addAdditionalSaveData(tag);
-        tag.putBoolean("Active", this.isActive());
-        tag.putBoolean("HasStarted", this.hasStarted());
-        tag.putInt("Remaining", this.getRemainingTicks());
-        tag.putBoolean("FirstBounce", this.hadFirstBounce);
-        tag.putInt("PickupDelay", this.pickupDelay);
-    }
+    // Getters
+    public boolean isActive() { return this.entityData.get(DATA_ACTIVE); }
+    public boolean hasStarted() { return this.entityData.get(DATA_STARTED); }
+    public int getRemainingTicks() { return this.entityData.get(DATA_REMAINING); }
 
     @Override
     public IPacket<?> getAddEntityPacket() {
         return NetworkHooks.getEntitySpawningPacket(this);
     }
-
-    // ---- Getters ----
-    public boolean isActive() { return this.entityData.get(DATA_ACTIVE); }
-    public boolean hasStarted() { return this.entityData.get(DATA_STARTED); }
-    public int getRemainingTicks() { return this.entityData.get(DATA_REMAINING); }
 }

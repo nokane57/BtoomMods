@@ -1,7 +1,6 @@
 package fr.nokane.btoommods.entity.item;
 
 import fr.nokane.btoommods.config.ModConfigs;
-import fr.nokane.btoommods.config.ModConfigs.ExplosionMode;
 import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.net.Net;
 import fr.nokane.btoommods.net.RemoteOwnerMarkerS2C;
@@ -21,26 +20,33 @@ import net.minecraft.util.SoundCategory;
 import net.minecraft.util.SoundEvents;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.vector.Vector3d;
+import net.minecraft.world.Explosion;
 import net.minecraft.world.World;
 import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.NetworkHooks;
 
+import java.util.HashSet;
 import java.util.List;
-import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 public class RemoteBimEntity extends ProjectileItemEntity {
 
     private static final DataParameter<Integer> SLOT_ID = EntityDataManager.defineId(RemoteBimEntity.class, DataSerializers.INT);
     private static final DataParameter<Boolean> STUCK   = EntityDataManager.defineId(RemoteBimEntity.class, DataSerializers.BOOLEAN);
-    private static final double SNEAK_RECALL_RADIUS = 1.5D; // distance max (blocs)
-    private static final int    SNEAK_RECALL_MIN_AGE = 10;  // évite le pickup instantané (ticks)
 
-    private static final double RESTITUTION_ENTITY = 0.35; // rebond sur entités
-    private int ownerMarkerCooldown = 0; // ticks
+    private static final double SNEAK_RECALL_RADIUS = 1.5D;
+    private static final int SNEAK_RECALL_MIN_AGE = 10;
+    private static final double RESTITUTION_ENTITY = 0.35D;
+    private int ownerMarkerCooldown = 0;
 
-    public RemoteBimEntity(EntityType<? extends RemoteBimEntity> type, World level){ super(type, level); }
-    public RemoteBimEntity(EntityType<? extends RemoteBimEntity> type, World level, LivingEntity owner){ super(type, owner, level); }
+    public RemoteBimEntity(EntityType<? extends RemoteBimEntity> type, World level) {
+        super(type, level);
+    }
+
+    public RemoteBimEntity(EntityType<? extends RemoteBimEntity> type, World level, LivingEntity owner) {
+        super(type, owner, level);
+    }
 
     @Override
     protected void defineSynchedData() {
@@ -49,12 +55,26 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         this.entityData.define(STUCK, false);
     }
 
-    @Override public Item getDefaultItem(){ return ModItems.REMOTE_BIM.get(); }
+    @Override
+    public Item getDefaultItem() {
+        return ModItems.REMOTE_BIM.get();
+    }
 
-    public int  getSlot(){ return Math.max(1, Math.min(8, this.entityData.get(SLOT_ID))); }
-    public void setSlot(int s){ this.entityData.set(SLOT_ID, Math.max(1, Math.min(8, s))); }
-    public boolean isStuck(){ return this.entityData.get(STUCK); }
-    private  void setStuck(boolean b){ this.entityData.set(STUCK, b); }
+    public int getSlot() {
+        return Math.max(1, Math.min(8, this.entityData.get(SLOT_ID)));
+    }
+
+    public void setSlot(int s) {
+        this.entityData.set(SLOT_ID, Math.max(1, Math.min(8, s)));
+    }
+
+    public boolean isStuck() {
+        return this.entityData.get(STUCK);
+    }
+
+    private void setStuck(boolean b) {
+        this.entityData.set(STUCK, b);
+    }
 
     @Override
     public void tick() {
@@ -62,22 +82,23 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         if (level.isClientSide) return;
 
         if (tryOwnerSneakPickup()) return;
-        // Lifetime (config) : n'expire que si non collée (par défaut 0 = infini)
-        int lifetime = ModConfigs.COMMON.REMOTE_LIFETIME_TICKS.get();
+
+        // durée de vie seulement si pas collée
+        int lifetime = ModConfigs.REMOTE.REMOTE_MARKER_COOLDOWN_TICKS.get();
         if (!isStuck() && lifetime > 0 && this.tickCount > lifetime) {
             this.remove();
             return;
         }
 
-        if (isStuck()){
+        if (isStuck()) {
             this.setDeltaMovement(Vector3d.ZERO);
             this.noPhysics = true;
             this.setInvisible(true);
 
-            if (ownerMarkerCooldown-- <= 0){
-                ownerMarkerCooldown = ModConfigs.COMMON.REMOTE_MARKER_COOLDOWN_TICKS.get();
+            if (ownerMarkerCooldown-- <= 0) {
+                ownerMarkerCooldown = ModConfigs.REMOTE.REMOTE_MARKER_COOLDOWN_TICKS.get();
                 if (ownerMarkerCooldown <= 0) ownerMarkerCooldown = 20;
-                if (getOwner() instanceof ServerPlayerEntity){
+                if (getOwner() instanceof ServerPlayerEntity) {
                     ServerPlayerEntity sp = (ServerPlayerEntity) getOwner();
                     if (sp.connection != null && !sp.hasDisconnected()) {
                         Net.toPlayer(sp, new RemoteOwnerMarkerS2C(this.getX(), this.getY() + 0.05, this.getZ()));
@@ -87,7 +108,7 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             return;
         }
 
-        // en vol : visible, petite friction
+        // vol libre
         this.setInvisible(false);
         Vector3d v = this.getDeltaMovement();
         this.setDeltaMovement(v.x * 0.99, v.y, v.z * 0.99);
@@ -98,12 +119,12 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         super.onHit(hit);
         if (level.isClientSide) return;
 
-        if (hit.getType() == RayTraceResult.Type.BLOCK){
+        if (hit.getType() == RayTraceResult.Type.BLOCK) {
             BlockRayTraceResult br = (BlockRayTraceResult) hit;
             Direction face = br.getDirection();
             Vector3d loc = br.getLocation();
             double off = 0.01;
-            this.setPos(loc.x + face.getStepX()*off, loc.y + face.getStepY()*off, loc.z + face.getStepZ()*off);
+            this.setPos(loc.x + face.getStepX() * off, loc.y + face.getStepY() * off, loc.z + face.getStepZ() * off);
 
             this.setDeltaMovement(Vector3d.ZERO);
             this.noPhysics = true;
@@ -124,126 +145,74 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         level.playSound(null, this.blockPosition(), SoundEvents.SLIME_BLOCK_STEP, SoundCategory.PLAYERS, 0.4F, 1.1F);
     }
 
-    /* === Détonation (suit remote_bim) === */
-    public void detonateNow(){
-        if (this.removed) return;
-        if (!(level instanceof ServerWorld)) return;
+    /** Détonation suivant la config Remote. */
+    public void detonateNow() {
+        if (this.removed || !(level instanceof ServerWorld)) return;
 
         ServerWorld sw = (ServerWorld) level;
         BlockPos center = this.blockPosition();
 
-        // ---- lecture config remote_bim
-        double radiusBlocks = ModConfigs.COMMON.REMOTE_RADIUS.get();
-        double heartsAtCenter = ModConfigs.COMMON.REMOTE_EPICENTER_HEARTS.get();
-        float hpAtCenter = (float)(heartsAtCenter * 2.0); // cœurs -> HP
-        float blockBlast = ModConfigs.COMMON.REMOTE_BLOCK_BLAST.get().floatValue();
-        boolean causesFire = ModConfigs.COMMON.REMOTE_CAUSES_FIRE.get();
-        ExplosionMode modeCfg = ModConfigs.COMMON.REMOTE_EXPLOSION_MODE.get();
-        boolean manualBreak = ModConfigs.COMMON.REMOTE_MANUAL_BREAK_ENABLED.get();
-        int manualMax = ModConfigs.COMMON.REMOTE_MANUAL_BREAK_MAX_BLOCKS.get();
+        double radius = ModConfigs.REMOTE.REMOTE_RADIUS.get();
+        boolean breakBlocks = ModConfigs.REMOTE.BREAK_BLOCKS.get();
+        boolean fire = ModConfigs.REMOTE.REMOTE_CAUSES_FIRE.get();
 
-        net.minecraft.world.Explosion.Mode blockMode =
-                (modeCfg == ExplosionMode.BREAK) ? net.minecraft.world.Explosion.Mode.BREAK
-                        : net.minecraft.world.Explosion.Mode.NONE;
+        float explosionPower = (float) Math.min(8.0, radius / 2.0);
+        Explosion.Mode mode = breakBlocks ? Explosion.Mode.BREAK : Explosion.Mode.NONE;
 
-        // ---- dégâts entités (profil linéaire centre -> rayon)
-        if (radiusBlocks > 0.0) {
-            AxisAlignedBB box = new AxisAlignedBB(
-                    getX()-radiusBlocks, getY()-radiusBlocks, getZ()-radiusBlocks,
-                    getX()+radiusBlocks, getY()+radiusBlocks, getZ()+radiusBlocks
-            );
-            LivingEntity ownerLE = (getOwner() instanceof LivingEntity) ? (LivingEntity) getOwner() : null;
-            DamageSource src = DamageSource.explosion(ownerLE);
+        AxisAlignedBB area = new AxisAlignedBB(
+                getX() - radius, getY() - radius, getZ() - radius,
+                getX() + radius, getY() + radius, getZ() + radius
+        );
 
-            List<LivingEntity> list = sw.getEntitiesOfClass(LivingEntity.class, box, LivingEntity::isAlive);
-            for (LivingEntity e : list){
-                double d = Math.sqrt(e.distanceToSqr(this));
-                if (d > radiusBlocks) continue;
-                float dmg = (float)Math.max(0.0, hpAtCenter * (1.0 - d / radiusBlocks));
-                if (dmg > 0f) e.hurt(src, dmg);
-            }
+        LivingEntity ownerLE = (getOwner() instanceof LivingEntity) ? (LivingEntity) getOwner() : null;
+        DamageSource src = DamageSource.explosion(ownerLE);
+
+        for (LivingEntity e : sw.getEntitiesOfClass(LivingEntity.class, area, LivingEntity::isAlive)) {
+            double d = Math.sqrt(e.distanceToSqr(this));
+            if (d > radius) continue;
+            float dmg = (float) (8.0 * (1.0 - d / radius));
+            e.hurt(src, dmg * 2.0F);
         }
 
-        // ---- petit "nettoyage" manuel optionnel
-        if (manualBreak && manualMax > 0) {
-            Random r = sw.random;
-            int broken = 0, attempts = Math.max(manualMax * 4, manualMax + 16);
-            while (broken < manualMax && attempts-- > 0){
-                int dx = r.nextInt(7) - 3;
-                int dz = r.nextInt(7) - 3;
-                BlockPos p = center.offset(dx, 0, dz);
-                BlockPos.Mutable m = new BlockPos.Mutable();
-                for (int i=0;i<6;i++){
-                    m.set(p.getX(), p.getY()+i, p.getZ());
-                    if (sw.isEmptyBlock(m) && !sw.isEmptyBlock(m.below())){
-                        p = m.below();
-                        break;
-                    }
-                }
-                float hardness = sw.getBlockState(p).getDestroySpeed(sw, p);
-                if (hardness >= 0 && hardness <= 3.0f && !sw.isEmptyBlock(p)){
-                    if (sw.destroyBlock(p, true)) broken++;
-                }
-            }
-        }
-
-        // ---- feedback + explosion vanilla suivant config
-        sw.levelEvent(2001, center, net.minecraft.block.Block.getId(sw.getBlockState(center)));
-        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 1.0F, 0.9F + sw.random.nextFloat()*0.2F);
-
-        if (blockBlast > 0f || blockMode != net.minecraft.world.Explosion.Mode.NONE || causesFire) {
-            sw.explode(this, getX(), getY(), getZ(), blockBlast, causesFire, blockMode);
-        } else {
-            // pas d'explosion vanilla (comportement par défaut antérieur)
-            sw.explode(this, getX(), getY(), getZ(), 0.0F, false, net.minecraft.world.Explosion.Mode.NONE);
-        }
-
+        sw.explode(this, getX(), getY(), getZ(), explosionPower, fire, mode);
+        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 1.0F, 0.9F + sw.random.nextFloat() * 0.2F);
         this.remove();
     }
 
-    /* === Slot 1..8 unique par joueur — scan borné/configurable === */
-    public void assignSlotAuto(){
+    /** Slot auto (1..8) unique par joueur. */
+    public void assignSlotAuto() {
         if (!(level instanceof ServerWorld)) { setSlot(1); return; }
-        UUID me = this.getOwner() != null ? this.getOwner().getUUID() : new UUID(0,0);
+        UUID me = (getOwner() != null ? getOwner().getUUID() : new UUID(0, 0));
         ServerWorld sw = (ServerWorld) level;
 
-        int scan = ModConfigs.COMMON.REMOTE_SCAN_RADIUS.get();
-        AxisAlignedBB search = new AxisAlignedBB(
-                this.getX() - scan, this.getY() - scan, this.getZ() - scan,
-                this.getX() + scan, this.getY() + scan, this.getZ() + scan
-        );
+        int scan = ModConfigs.REMOTE.REMOTE_SCAN_RADIUS.get();
+        AxisAlignedBB box = new AxisAlignedBB(getX() - scan, getY() - scan, getZ() - scan, getX() + scan, getY() + scan, getZ() + scan);
 
-        java.util.Set<Integer> taken = new java.util.HashSet<>();
-        sw.getEntitiesOfClass(RemoteBimEntity.class, search).stream()
-                .filter(e -> e.getOwner()!=null && e.getOwner().getUUID().equals(me))
-                .map(RemoteBimEntity::getSlot)
-                .forEach(taken::add);
+        Set<Integer> taken = new HashSet<Integer>();
+        for (RemoteBimEntity e : sw.getEntitiesOfClass(RemoteBimEntity.class, box)) {
+            if (e.getOwner() != null && e.getOwner().getUUID().equals(me)) {
+                taken.add(e.getSlot());
+            }
+        }
 
-        for (int s=1; s<=8; s++){
-            if (!taken.contains(s)){ setSlot(s); return; }
+        for (int s = 1; s <= 8; s++) {
+            if (!taken.contains(s)) {
+                setSlot(s);
+                return;
+            }
         }
         setSlot(1);
     }
 
-    /** Tente de rendre l'item au propriétaire s'il est accroupi et au contact. */
+    /** Retour d'item si joueur accroupi à proximité. */
     private boolean tryOwnerSneakPickup() {
         if (!(getOwner() instanceof ServerPlayerEntity)) return false;
         ServerPlayerEntity sp = (ServerPlayerEntity) getOwner();
+        if (!sp.isShiftKeyDown() || this.tickCount < SNEAK_RECALL_MIN_AGE) return false;
+        if (this.distanceToSqr(sp) > SNEAK_RECALL_RADIUS * SNEAK_RECALL_RADIUS) return false;
 
-        if (!sp.isShiftKeyDown()) return false;                  // doit être accroupi
-        if (this.tickCount < SNEAK_RECALL_MIN_AGE) return false; // anti-réaspiration instantanée
-
-        double max2 = SNEAK_RECALL_RADIUS * SNEAK_RECALL_RADIUS;
-        if (this.distanceToSqr(sp) > max2) return false;         // trop loin
-
-        // Rendre EXACTEMENT l'item tiré (NBT inclus)
-        ItemStack toGive = this.getItem().copy();
-        if (toGive.isEmpty()) toGive = new ItemStack(this.getDefaultItem());
-
-        if (!sp.addItem(toGive)) {
-            sp.drop(toGive, false); // inventaire plein → drop au sol
-        }
-
+        ItemStack give = this.getItem().isEmpty() ? new ItemStack(getDefaultItem()) : this.getItem().copy();
+        if (!sp.addItem(give)) sp.drop(give, false);
         this.remove();
         return true;
     }

@@ -1,0 +1,14 @@
+{
+  "drop": {
+    "sounds": [ { "name": "btoommods:drop" } ]
+  },
+  "pi": {
+    "sounds": [ { "name": "btoommods:pi",  "stream": true } ]
+  },
+  "pull": {
+    "sounds": [ { "name": "btoommods:pull" } ]
+  },
+  "sonar": {
+    "sounds": [ { "name": "btoommods:sonar" } ]
+  }
+}

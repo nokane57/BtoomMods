@@ -11,24 +11,28 @@ import net.minecraftforge.fml.network.NetworkEvent;
 import java.util.function.Supplier;
 
 public class RemoteQuerySlotsC2S {
+
     public static void encode(RemoteQuerySlotsC2S m, PacketBuffer buf) {}
     public static RemoteQuerySlotsC2S decode(PacketBuffer buf) { return new RemoteQuerySlotsC2S(); }
 
-    public static void handle(RemoteQuerySlotsC2S msg, Supplier<NetworkEvent.Context> ctxSup){
+    public static void handle(RemoteQuerySlotsC2S msg, Supplier<NetworkEvent.Context> ctxSup) {
         NetworkEvent.Context ctx = ctxSup.get();
         ctx.enqueueWork(() -> {
             ServerPlayerEntity sp = ctx.getSender();
             if (sp == null) return;
 
             ServerWorld sw = sp.getLevel();
-            int scan = ModConfigs.COMMON.REMOTE_SCAN_RADIUS.get();
+
+            // ✅ Lecture correcte dans la config REMOTE
+            int scan = ModConfigs.REMOTE.REMOTE_SCAN_RADIUS.get();
             AxisAlignedBB box = sp.getBoundingBox().inflate(scan);
 
             int mask = 0;
             for (RemoteBimEntity e : sw.getEntitiesOfClass(RemoteBimEntity.class, box,
                     ent -> ent.getOwner() != null && ent.getOwner().getUUID().equals(sp.getUUID()))) {
                 int s = e.getSlot();
-                if (s >= 1 && s <= 8) mask |= (1 << (s - 1));
+                if (s >= 1 && s <= 8)
+                    mask |= (1 << (s - 1));
             }
 
             Net.toPlayer(sp, new RemoteSlotsS2C(mask));

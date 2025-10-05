@@ -42,6 +42,9 @@ public final class Net {
                 Optional.of(NetworkDirection.PLAY_TO_CLIENT));
 
         CH.registerMessage(id++, TimerKeyC2S.class, TimerKeyC2S::encode, TimerKeyC2S::decode, TimerKeyC2S::handle);
+
+        CH.registerMessage(id++, TimerToggledS2C.class,
+                TimerToggledS2C::encode, TimerToggledS2C::decode, TimerToggledS2C::handle);
     }
 
     public static void toPlayer(net.minecraft.entity.player.ServerPlayerEntity sp, Object msg){

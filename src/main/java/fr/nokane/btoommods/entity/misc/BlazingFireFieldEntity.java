@@ -1,4 +1,3 @@
-// fr/nokane/btoommods/entity/misc/BlazingFireFieldEntity.java
 package fr.nokane.btoommods.entity.misc;
 
 import fr.nokane.btoommods.config.ModConfigs;
@@ -16,11 +15,15 @@ import net.minecraftforge.fml.network.NetworkHooks;
 
 import java.util.*;
 
+/**
+ * Entité temporaire représentant un champ de feu en croix.
+ * Elle inflige des dégâts et applique le feu aux entités à proximité.
+ */
 public class BlazingFireFieldEntity extends Entity {
     private int age;
     private static final DamageSource BLAZING_FLAME = (new DamageSource("blazing_flame")).setIsFire();
 
-    /** Colonnes (X,Z,Y au ras du sol) qui composent la croix */
+    /** Colonnes (X,Z,Y) qui composent la croix du champ de feu */
     private final List<BlockPos> columns = new ArrayList<>();
     private boolean initialized = false;
 
@@ -36,74 +39,78 @@ public class BlazingFireFieldEntity extends Entity {
         super.tick();
 
         if (!initialized) {
-            buildColumns();              // calcule une fois la géométrie, avec “snap” au sol
+            buildColumns(); // construit la géométrie du champ (une seule fois)
             initialized = true;
         }
 
+        // --- Client : uniquement les particules ---
         if (level.isClientSide) {
-            spawnParticles();            // visuel uniquement
+            spawnParticles();
             return;
         }
 
-        // serveur: logique
+        // --- Serveur : logique de dégâts ---
         age++;
-        if (age >= ModConfigs.COMMON.BLAZING_FIRE_LIFETIME.get()) { this.remove(); return; }
+        int lifetime = ModConfigs.BLAZING.BLAZING_FIRE_LIFETIME.get();
+        if (age >= lifetime) {
+            remove();
+            return;
+        }
 
-        float insideHearts = ModConfigs.COMMON.BLAZING_FIRE_DMG_INSIDE_HEARTS.get().floatValue();
-        int burnDuration = ModConfigs.COMMON.BLAZING_BURN_DURATION.get();
+        float insideHearts = ModConfigs.BLAZING.BLAZING_FIRE_DMG_INSIDE_HEARTS.get().floatValue();
+        int burnDuration = ModConfigs.BLAZING.BLAZING_BURN_DURATION.get();
 
-        // On tape les entités trouvées sur TOUTES les colonnes (évite le Y fixe)
+        // On tape les entités sur chaque colonne (au sol)
         Set<LivingEntity> victims = new HashSet<>();
         for (BlockPos p : columns) {
             AxisAlignedBB aabb = new AxisAlignedBB(
-                    p.getX() + 0.1, p.getY(),     p.getZ() + 0.1,
+                    p.getX() + 0.1, p.getY(), p.getZ() + 0.1,
                     p.getX() + 0.9, p.getY() + 1.6, p.getZ() + 0.9
             );
             victims.addAll(level.getEntitiesOfClass(LivingEntity.class, aabb, LivingEntity::isAlive));
         }
 
         for (LivingEntity e : victims) {
-            e.hurt(BLAZING_FLAME, insideHearts * 2.0F);
+            e.hurt(BLAZING_FLAME, insideHearts * 2.0F); // 1 cœur = 2 HP
             e.setSecondsOnFire(Math.max(1, burnDuration / 20));
         }
     }
 
-    /** Construit la croix et “colle” chaque colonne au sol localement */
+    /** Construit la croix de feu alignée au sol. */
     private void buildColumns() {
         columns.clear();
 
-        int len   = ModConfigs.COMMON.BLAZING_FIRE_LENGTH.get();
-        int width = Math.max(1, ModConfigs.COMMON.BLAZING_FIRE_WIDTH.get());
+        int length = ModConfigs.BLAZING.BLAZING_FIRE_LENGTH.get();
+        int width  = Math.max(1, ModConfigs.BLAZING.BLAZING_FIRE_WIDTH.get());
+        BlockPos center = this.blockPosition();
 
-        BlockPos c = this.blockPosition();
-        int fromY = (int)Math.ceil(this.getY() + 16); // point de départ pour les raycasts
-
-        // pour éviter les doublons centre etc.
+        int fromY = (int) Math.ceil(this.getY() + 16);
         Set<Long> seen = new HashSet<>();
 
-        // bras X
-        for (int dx = -len; dx <= len; dx++) {
-            for (int w = -(width-1)/2; w <= width/2; w++) {
-                BlockPos base = new BlockPos(c.getX() + dx, fromY, c.getZ() + w);
-                BlockPos top  = snapColumnToTopSolid(base, fromY);
+        // --- Bras X ---
+        for (int dx = -length; dx <= length; dx++) {
+            for (int w = -(width - 1) / 2; w <= width / 2; w++) {
+                BlockPos base = new BlockPos(center.getX() + dx, fromY, center.getZ() + w);
+                BlockPos top = snapColumnToTopSolid(base, fromY);
                 long key = BlockPos.asLong(top.getX(), top.getY(), top.getZ());
                 if (seen.add(key)) columns.add(top);
             }
         }
-        // bras Z
-        for (int dz = -len; dz <= len; dz++) {
-            for (int w = -(width-1)/2; w <= width/2; w++) {
-                BlockPos base = new BlockPos(c.getX() + w, fromY, c.getZ() + dz);
-                BlockPos top  = snapColumnToTopSolid(base, fromY);
+
+        // --- Bras Z ---
+        for (int dz = -length; dz <= length; dz++) {
+            for (int w = -(width - 1) / 2; w <= width / 2; w++) {
+                BlockPos base = new BlockPos(center.getX() + w, fromY, center.getZ() + dz);
+                BlockPos top = snapColumnToTopSolid(base, fromY);
                 long key = BlockPos.asLong(top.getX(), top.getY(), top.getZ());
                 if (seen.add(key)) columns.add(top);
             }
         }
     }
 
-    /** Particules posées au ras du sol de CHAQUE colonne */
+    /** Génère des particules visuelles sur chaque colonne. */
     private void spawnParticles() {
-        java.util.Random r = this.level.random;
+        Random r = this.level.random;
         for (BlockPos p : columns) {
             double x = p.getX() + 0.5;
             double y = p.getY() + 0.01;
@@ -116,7 +123,7 @@ public class BlazingFireFieldEntity extends Entity {
         }
     }
 
-    /** Raycast vertical ↓ puis fallback heightmap : renvoie la case AU-DESSUS du support */
+    /** Raycast vertical ↓ + fallback heightmap : renvoie le bloc au-dessus du sol solide. */
     private BlockPos snapColumnToTopSolid(BlockPos colXZ, int fromY) {
         Vector3d start = new Vector3d(colXZ.getX() + 0.5, fromY, colXZ.getZ() + 0.5);
         Vector3d end   = new Vector3d(colXZ.getX() + 0.5, fromY - 256, colXZ.getZ() + 0.5);
@@ -145,6 +152,14 @@ public class BlazingFireFieldEntity extends Entity {
 
     @Override protected void readAdditionalSaveData(CompoundNBT nbt) { this.age = nbt.getInt("Age"); }
     @Override protected void addAdditionalSaveData(CompoundNBT nbt)   { nbt.putInt("Age", this.age); }
-    @Override public net.minecraft.network.IPacket<?> getAddEntityPacket() { return NetworkHooks.getEntitySpawningPacket(this); }
-    @Override public boolean isPickable() { return false; }
+
+    @Override
+    public net.minecraft.network.IPacket<?> getAddEntityPacket() {
+        return NetworkHooks.getEntitySpawningPacket(this);
+    }
+
+    @Override
+    public boolean isPickable() {
+        return false;
+    }
 }
