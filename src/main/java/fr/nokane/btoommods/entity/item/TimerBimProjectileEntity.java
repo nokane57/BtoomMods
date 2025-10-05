@@ -4,7 +4,7 @@ import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.item.TimerBimItem;
-import fr.nokane.btoommods.sound.ModSounds;
+import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.*;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.ProjectileItemEntity;
@@ -13,7 +13,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.network.IPacket;
 import net.minecraft.network.datasync.*;
-import net.minecraft.util.*;
+import net.minecraft.util.Direction;
+import net.minecraft.util.IndirectEntityDamageSource;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.shapes.VoxelShape;
 import net.minecraft.util.math.vector.Vector3d;
@@ -66,13 +67,13 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     public void tick() {
         super.tick();
 
-        // Gravité
+        // Gravité simple
         if (!this.isNoGravity()) {
             Vector3d m = this.getDeltaMovement();
             this.setDeltaMovement(m.x, m.y - ModConfigs.TIMER.POIDS_PROJECTILE.get(), m.z);
         }
 
-        // Anti-enfoncement
+        // Correction anti-enfoncement
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -83,10 +84,11 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             }
         }
 
-        // Timer (serveur uniquement)
+        // Gestion du timer (serveur uniquement)
         if (!level.isClientSide && isActive() && getRemainingTicks() > 0) {
             int remaining = getRemainingTicks() - 1;
             this.entityData.set(DATA_REMAINING, remaining);
+
             if (remaining <= 0) {
                 TimerBimItem.explodeAndConsume(level, getX(), getY(), getZ());
                 this.remove();
@@ -103,34 +105,35 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             this.onHitEntity((EntityRayTraceResult) hit);
             return;
         }
-        if (level.isClientSide || hit.getType() != RayTraceResult.Type.BLOCK) return;
+
+        if (hit.getType() != RayTraceResult.Type.BLOCK || level.isClientSide) return;
 
         BlockRayTraceResult br = (BlockRayTraceResult) hit;
         Direction face = br.getDirection();
         BlockPos bpos = br.getBlockPos();
         Vector3d loc = br.getLocation();
 
-        // paramètres physiques
+        // ⚙️ Physique des rebonds
         double restitutionGround = ModConfigs.TIMER.RESTITUTION_GROUND.get();
-        double frictionGround    = ModConfigs.TIMER.FRICTION_GROUND.get();
-        double restitutionWall   = 0.45;
-        double frictionWall      = 0.75;
-        double maxBounceUp       = 0.3;
-        double stopEps           = 0.04;
-        double popSpeedGate      = 0.25;
-        double wallVerticalPop   = 0.05;
+        double frictionGround = ModConfigs.TIMER.FRICTION_GROUND.get();
+        double restitutionWall = 0.45;
+        double frictionWall = 0.75;
+        double maxBounceUp = 0.3;
+        double stopEps = 0.04;
+        double popSpeedGate = 0.25;
+        double wallVerticalPop = 0.05;
+
+        Vector3d v = this.getDeltaMovement();
 
         switch (face) {
             case UP: {
                 double topY = bpos.getY() + level.getBlockState(bpos).getCollisionShape(level, bpos).max(Direction.Axis.Y);
                 this.setPos(loc.x, Math.max(loc.y, topY) + GROUND_EPS, loc.z);
 
-                Vector3d v = this.getDeltaMovement();
                 double newVx = v.x * frictionGround;
                 double newVz = v.z * frictionGround;
                 double newVy = Math.abs(v.y) * restitutionGround;
-                newVy = Math.max(newVy, 0.02);
-                newVy = Math.min(newVy, maxBounceUp);
+                newVy = Math.min(Math.max(newVy, 0.02), maxBounceUp);
 
                 double horiz = Math.hypot(newVx, newVz);
                 if (newVy < stopEps && horiz < 0.05) {
@@ -144,40 +147,27 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
                 this.fallDistance = 0.0F;
                 lastGroundHitTime = level.getGameTime();
 
-                // 🔊 Son de rebond
-                level.playSound(null, this.blockPosition(),
-                        ModSounds.REBOND_ITEM.get(), SoundCategory.PLAYERS,
-                        0.8F, 1.0F + level.random.nextFloat() * 0.2F);
+                SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
+
             case NORTH:
             case SOUTH: {
-                Vector3d v = this.getDeltaMovement();
                 double addPop = (v.length() > popSpeedGate) ? wallVerticalPop : 0.0;
-                double newVx = v.x * frictionWall;
-                double newVy = Math.max(v.y * 0.25, 0.0) + addPop;
-                newVy = Math.min(newVy, maxBounceUp * 0.6);
-                double newVz = -v.z * restitutionWall;
-                this.setDeltaMovement(newVx, newVy, newVz);
-
-                level.playSound(null, this.blockPosition(),
-                        ModSounds.REBOND_ITEM.get(), SoundCategory.PLAYERS,
-                        0.7F, 0.9F + level.random.nextFloat() * 0.3F);
+                this.setDeltaMovement(v.x * frictionWall,
+                        Math.min(Math.max(v.y * 0.25, 0.0) + addPop, maxBounceUp * 0.6),
+                        -v.z * restitutionWall);
+                SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
+
             case EAST:
             case WEST: {
-                Vector3d v = this.getDeltaMovement();
                 double addPop = (v.length() > popSpeedGate) ? wallVerticalPop : 0.0;
-                double newVx = -v.x * restitutionWall;
-                double newVy = Math.max(v.y * 0.25, 0.0) + addPop;
-                newVy = Math.min(newVy, maxBounceUp * 0.6);
-                double newVz = v.z * frictionWall;
-                this.setDeltaMovement(newVx, newVy, newVz);
-
-                level.playSound(null, this.blockPosition(),
-                        ModSounds.REBOND_ITEM.get(), SoundCategory.PLAYERS,
-                        0.7F, 0.9F + level.random.nextFloat() * 0.3F);
+                this.setDeltaMovement(-v.x * restitutionWall,
+                        Math.min(Math.max(v.y * 0.25, 0.0) + addPop, maxBounceUp * 0.6),
+                        v.z * frictionWall);
+                SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
         }
@@ -194,6 +184,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         if (!level.isClientSide && target instanceof LivingEntity) {
             float dmg = (float) (ModConfigs.TIMER.IMPACT_HEARTS.get() * 2.0);
             target.hurt(new IndirectEntityDamageSource("timer_bim", this, this.getOwner()).setProjectile(), dmg);
+            SoundUtils.playRebound(level, getX(), getY(), getZ());
         }
     }
 
@@ -210,16 +201,17 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         tag.putInt(TimerBimItem.NBT_REMAINING, Math.max(0, this.getRemainingTicks()));
         stack.setTag(tag);
 
-        if (player.addItem(stack)) {
-            this.remove();
-        }
+        if (player.addItem(stack)) this.remove();
     }
 
     private boolean isGrounded() {
         long now = level.getGameTime();
         if (now - lastGroundHitTime <= 2) return true;
+
         BlockPos below = this.blockPosition().below();
-        double topY = below.getY() + level.getBlockState(below).getCollisionShape(level, below).max(Direction.Axis.Y);
+        double topY = below.getY() + level.getBlockState(below)
+                .getCollisionShape(level, below).max(Direction.Axis.Y);
+
         boolean nearSurface = (this.getY() - topY) <= 0.06;
         boolean slowY = Math.abs(this.getDeltaMovement().y) < 0.08;
         return nearSurface && slowY;

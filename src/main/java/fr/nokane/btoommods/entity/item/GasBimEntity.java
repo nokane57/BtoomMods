@@ -3,7 +3,7 @@ package fr.nokane.btoommods.entity.item;
 import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.item.ModItems;
-import fr.nokane.btoommods.sound.ModSounds;
+import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
@@ -11,7 +11,6 @@ import net.minecraft.entity.projectile.ProjectileItemEntity;
 import net.minecraft.item.Item;
 import net.minecraft.util.Direction;
 import net.minecraft.util.IndirectEntityDamageSource;
-import net.minecraft.util.SoundCategory;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.shapes.VoxelShape;
 import net.minecraft.util.math.vector.Vector3d;
@@ -42,14 +41,14 @@ public class GasBimEntity extends ProjectileItemEntity {
         ticksFromLaunch++;
 
         if (!level.isClientSide) {
-            // Explosion après le délai si posé au sol
+            // Explosion automatique si le gaz reste au sol trop longtemps
             if (ticksFromLaunch >= ModConfigs.GAS.GAS_EXPLODE_AFTER_TICKS.get() && isGrounded()) {
                 explodeGas();
                 return;
             }
         }
 
-        // Anti-clip : évite de s’enfoncer dans les dalles ou blocs minces
+        // Anti-enfoncement dans les dalles/blocs minces
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -75,7 +74,7 @@ public class GasBimEntity extends ProjectileItemEntity {
         BlockPos bpos = br.getBlockPos();
         Vector3d loc = br.getLocation();
 
-        // paramètres physiques
+        // Paramètres physiques depuis config
         double restitutionGround = ModConfigs.GAS.RESTITUTION_GROUND.get();
         double frictionGround = ModConfigs.GAS.FRICTION_GROUND.get();
         double restitutionWall = ModConfigs.GAS.RESTITUTION_WALL.get();
@@ -94,7 +93,6 @@ public class GasBimEntity extends ProjectileItemEntity {
                 Vector3d v = this.getDeltaMovement();
                 double newVx = v.x * frictionGround;
                 double newVz = v.z * frictionGround;
-
                 double newVy = Math.abs(v.y) * restitutionGround;
                 newVy = Math.max(newVy, 0.02);
                 newVy = Math.min(newVy, maxBounceUp);
@@ -111,10 +109,8 @@ public class GasBimEntity extends ProjectileItemEntity {
                 this.fallDistance = 0.0F;
                 lastGroundHitGameTime = level.getGameTime();
 
-                // 🔊 Son custom de rebond au sol
-                level.playSound(null, this.blockPosition(),
-                        ModSounds.REBOND_ITEM.get(), SoundCategory.PLAYERS,
-                        0.8F, 1.0F + level.random.nextFloat() * 0.2F);
+                // 🔊 Son de rebond
+                SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
             case NORTH:
@@ -127,10 +123,7 @@ public class GasBimEntity extends ProjectileItemEntity {
                 double newVz = -v.z * restitutionWall;
                 this.setDeltaMovement(newVx, newVy, newVz);
 
-                // 🔊 Son custom de rebond sur mur
-                level.playSound(null, this.blockPosition(),
-                        ModSounds.REBOND_ITEM.get(), SoundCategory.PLAYERS,
-                        0.7F, 0.9F + level.random.nextFloat() * 0.3F);
+                SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
             case EAST:
@@ -143,10 +136,7 @@ public class GasBimEntity extends ProjectileItemEntity {
                 double newVz = v.z * frictionWall;
                 this.setDeltaMovement(newVx, newVy, newVz);
 
-                // 🔊 Son custom de rebond sur mur latéral
-                level.playSound(null, this.blockPosition(),
-                        ModSounds.REBOND_ITEM.get(), SoundCategory.PLAYERS,
-                        0.7F, 0.9F + level.random.nextFloat() * 0.3F);
+                SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
         }
@@ -173,10 +163,7 @@ public class GasBimEntity extends ProjectileItemEntity {
             this.setDeltaMovement(rebound);
             this.hasImpulse = true;
 
-            // 🔊 Son custom sur impact entité
-            level.playSound(null, this.blockPosition(),
-                    ModSounds.REBOND_ITEM.get(), SoundCategory.PLAYERS,
-                    0.75F, 1.1F + level.random.nextFloat() * 0.2F);
+            SoundUtils.playRebound(level, getX(), getY(), getZ());
         }
     }
 
@@ -198,6 +185,7 @@ public class GasBimEntity extends ProjectileItemEntity {
 
     private void explodeGas() {
         if (level.isClientSide) return;
+
         BlockPos below = this.blockPosition().below();
         double y = Math.max(this.getY(), topYOf(below)) + 0.01;
 
@@ -207,6 +195,7 @@ public class GasBimEntity extends ProjectileItemEntity {
             field.setPos(this.getX(), y, this.getZ());
             level.addFreshEntity(field);
         }
+
         this.remove();
     }
 

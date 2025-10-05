@@ -3,17 +3,15 @@ package fr.nokane.btoommods.entity.item;
 import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.item.ModItems;
+import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.ProjectileItemEntity;
 import net.minecraft.item.Item;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.DamageSource;
-import net.minecraft.util.SoundCategory;
-import net.minecraft.util.SoundEvents;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.Explosion;
@@ -95,7 +93,7 @@ public class CrackerBimEntity extends ProjectileItemEntity {
 
         // Récupération depuis config
         float radius = (float) ModConfigs.CRACKER.RADIUS.get().doubleValue();
-        float epicenterHearts = 8.0F; // peut venir d'une future config
+        float epicenterHearts = 8.0F; // configurable plus tard
         float blockBlast = (float) ModConfigs.CRACKER.EXPLOSION_STRENGTH.get().doubleValue();
         boolean breakBlocks = ModConfigs.CRACKER.BREAK_BLOCK.get();
 
@@ -105,9 +103,12 @@ public class CrackerBimEntity extends ProjectileItemEntity {
         Explosion boom = this.level.explode(this, pos.x, pos.y, pos.z,
                 blockBlast, false, vanillaMode);
 
-        // Dégâts entités
-        AxisAlignedBB area = new AxisAlignedBB(pos.x - radius, pos.y - radius, pos.z - radius,
-                pos.x + radius, pos.y + radius, pos.z + radius);
+        // Dégâts aux entités proches
+        AxisAlignedBB area = new AxisAlignedBB(
+                pos.x - radius, pos.y - radius, pos.z - radius,
+                pos.x + radius, pos.y + radius, pos.z + radius
+        );
+
         List<LivingEntity> victims = this.level.getEntitiesOfClass(LivingEntity.class, area, e -> e.isAlive() && e.isPickable());
 
         for (LivingEntity e : victims) {
@@ -117,9 +118,6 @@ public class CrackerBimEntity extends ProjectileItemEntity {
             float dmgHP = epicenterHearts * (float) factor * 2.0F;
             e.hurt(DamageSource.explosion(boom), dmgHP);
         }
-
-        this.level.playSound(null, pos.x, pos.y, pos.z,
-                SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 1.0F, 1.0F);
 
         remove();
     }

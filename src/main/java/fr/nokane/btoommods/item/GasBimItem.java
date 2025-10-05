@@ -43,7 +43,6 @@ public class GasBimItem extends Item {
             }
         }
 
-        level.playSound(null, player.blockPosition(), SoundEvents.CROSSBOW_SHOOT, SoundCategory.PLAYERS, 0.8F, 0.9F);
         player.awardStat(Stats.ITEM_USED.get(this));
         if (!player.abilities.instabuild) stack.shrink(1);
     }

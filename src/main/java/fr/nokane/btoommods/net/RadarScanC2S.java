@@ -3,11 +3,9 @@ package fr.nokane.btoommods.net;
 import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.radar.RadarCapability;
 import fr.nokane.btoommods.radar.RadarData;
-import fr.nokane.btoommods.sound.ModSounds;
+import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.player.ServerPlayerEntity;
 import net.minecraft.network.PacketBuffer;
-import net.minecraft.util.SoundCategory;
-import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.NetworkEvent;
@@ -34,10 +32,11 @@ public class RadarScanC2S {
                 ServerWorld world = player.getLevel();
                 long now = world.getGameTime();
 
-                // anti-spam
+                // 🕒 Anti-spam radar
                 if (now < data.getCooldownUntil()) return;
                 data.setCooldownUntil(now + ModConfigs.RADAR.RADAR_COOLDOWN_TICKS.get());
 
+                // 📡 Rayon de détection
                 int baseRadius = ModConfigs.RADAR.RADAR_BASE_RADIUS.get();
                 int extraPerItem = ModConfigs.RADAR.RADAR_EXTRA_PER_ITEM.get();
                 int radius = baseRadius + data.getBoosters() * extraPerItem;
@@ -66,18 +65,23 @@ public class RadarScanC2S {
 
                     foundIds.add(other.getId());
 
-                    // 💡 Les deux joueurs entendent le son sonar
-                    world.playSound(null, player.blockPosition(),
-                            ModSounds.SONAR_ITEM.get(), SoundCategory.PLAYERS, 1.0F, 1.0F);
+                    // 🔊 Sonar pour les deux joueurs
+                    SoundUtils.playWorldSound(world,
+                            player.getX(), player.getY(), player.getZ(),
+                            fr.nokane.btoommods.sound.ModSounds.SONAR_ITEM.get(),
+                            SoundUtils.VOL_SONAR, 1.0F);
 
-                    world.playSound(null, other.blockPosition(),
-                            ModSounds.SONAR_ITEM.get(), SoundCategory.PLAYERS, 1.0F, 1.0F);
+                    SoundUtils.playWorldSound(world,
+                            other.getX(), other.getY(), other.getZ(),
+                            fr.nokane.btoommods.sound.ModSounds.SONAR_ITEM.get(),
+                            SoundUtils.VOL_SONAR, 1.0F);
 
-                    // Glow pour la cible
+                    // ✨ Glow sur la cible détectée
                     Net.CH.send(PacketDistributor.PLAYER.with(() -> other),
                             new GlowS2C(glowTicks, new int[]{player.getId()}));
                 }
 
+                // ✨ Glow sur les cibles détectées côté joueur
                 if (!foundIds.isEmpty()) {
                     Net.CH.send(PacketDistributor.PLAYER.with(() -> player),
                             new GlowS2C(glowTicks, foundIds.stream().mapToInt(i -> i).toArray()));
@@ -92,7 +96,11 @@ public class RadarScanC2S {
         Vector3d look = p.getLookAngle();
         double lx = look.x, lz = look.z;
         double ll = Math.hypot(lx, lz);
-        if (ll < 1.0E-6) { lx = 0; lz = 0; ll = 1.0; }
+        if (ll < 1.0E-6) {
+            lx = 0;
+            lz = 0;
+            ll = 1.0;
+        }
 
         double dx = p.getX() - p.xOld;
         double dz = p.getZ() - p.zOld;
