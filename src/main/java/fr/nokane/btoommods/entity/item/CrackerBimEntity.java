@@ -2,128 +2,116 @@ package fr.nokane.btoommods.entity.item;
 
 import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
-import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.sound.SoundUtils;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.*;
 import net.minecraft.entity.projectile.ProjectileItemEntity;
 import net.minecraft.item.Item;
-import net.minecraft.tags.BlockTags;
-import net.minecraft.util.DamageSource;
+import net.minecraft.network.IPacket;
+import net.minecraft.util.Direction;
 import net.minecraft.util.math.*;
+import net.minecraft.util.math.shapes.VoxelShape;
 import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.Explosion;
 import net.minecraft.world.World;
 import net.minecraftforge.fml.network.NetworkHooks;
 
-import java.util.List;
-
+/**
+ * Projectile du Cracker BIM :
+ * - Subit la gravité (poids configurable)
+ * - Vitesse ajustée par le poids
+ * - Explosion immédiate à l'impact sans rebond
+ */
 public class CrackerBimEntity extends ProjectileItemEntity {
 
-    public CrackerBimEntity(EntityType<? extends CrackerBimEntity> type, World level) {
-        super(type, level);
+    private static final double GROUND_EPS = 0.02;
+    private boolean hasExploded = false;
+
+    public CrackerBimEntity(EntityType<? extends CrackerBimEntity> type, World world) {
+        super(type, world);
     }
 
-    public CrackerBimEntity(World level, LivingEntity owner) {
-        super(ModEntities.CRACKER_BIM.get(), owner, level);
+    public CrackerBimEntity(World world, LivingEntity owner) {
+        super(ModEntities.CRACKER_BIM.get(), owner, world);
     }
 
     @Override
     protected Item getDefaultItem() {
-        return ModItems.CRACKER_BIM.get();
+        return fr.nokane.btoommods.item.ModItems.CRACKER_BIM.get();
     }
 
     @Override
     public void tick() {
         super.tick();
 
-        if (level.isClientSide) return;
-
-        BlockPos pos = this.blockPosition();
-        BlockState bs = level.getBlockState(pos);
-
-        // Détonation sur feuilles/lianes
-        if (bs.is(Blocks.VINE) || bs.is(BlockTags.LEAVES)) {
-            explodeAndDiscard();
-            return;
+        // Gravité ajustée par le poids
+        if (!this.isNoGravity()) {
+            Vector3d vel = this.getDeltaMovement();
+            double poids = ModConfigs.CRACKER.POIDS_PROJECTILE.get();
+            this.setDeltaMovement(vel.x, vel.y - (0.04D * poids), vel.z);
         }
 
-        // Durée de vie max (config)
-        int life = ModConfigs.CRACKER.LIFETIME_TICKS.get();
-        if (this.tickCount > life) {
-            explodeAndDiscard();
+        // Empêche enfoncement dans le sol
+        BlockPos pos = this.blockPosition();
+        VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
+        if (!shape.isEmpty()) {
+            double topY = pos.getY() + shape.max(Direction.Axis.Y);
+            if (this.getY() < topY + GROUND_EPS) {
+                this.setPos(this.getX(), topY + GROUND_EPS, this.getZ());
+            }
+        }
+
+        // Sécurité : auto-suppression après un certain temps
+        if (!level.isClientSide && this.tickCount > ModConfigs.CRACKER.LIFETIME_TICKS.get()) {
+            explode();
+            this.remove();
         }
     }
 
     @Override
     protected void onHit(RayTraceResult hit) {
         super.onHit(hit);
-        if (level.isClientSide) return;
+        if (level.isClientSide || hasExploded) return;
+        hasExploded = true;
 
-        if (hit.getType() == RayTraceResult.Type.BLOCK) {
-            BlockRayTraceResult br = (BlockRayTraceResult) hit;
-            if (isSoftBlock(level.getBlockState(br.getBlockPos()), br.getBlockPos())) return;
-        }
-
-        explodeAndDiscard();
+        explode();
+        this.remove();
     }
 
     @Override
     protected void onHitEntity(EntityRayTraceResult hit) {
         super.onHitEntity(hit);
-        if (!level.isClientSide) explodeAndDiscard();
+        if (level.isClientSide || hasExploded) return;
+        hasExploded = true;
+
+        explode();
+        this.remove();
     }
 
-    private boolean isSoftBlock(BlockState s, BlockPos pos) {
-        if (s.isAir(level, pos)) return true;
-        if (s.getMaterial().isLiquid()) return true;
-        if (s.getMaterial().isReplaceable()) return true;
-        if (s.is(Blocks.TALL_GRASS) || s.is(Blocks.GRASS) || s.is(Blocks.FERN) || s.is(Blocks.LARGE_FERN)) return true;
-        if (s.is(BlockTags.FLOWERS) || s.is(Blocks.SWEET_BERRY_BUSH)) return true;
-        return false;
-    }
+    /** 💥 Explosion propre et configurable */
+    /** 💥 Explosion propre et configurable */
+    private void explode() {
+        if (level.isClientSide) return;
 
-    private void explodeAndDiscard() {
-        if (level.isClientSide) {
-            remove();
-            return;
-        }
+        double x = this.getX();
+        double y = this.getY();
+        double z = this.getZ();
 
-        // Récupération depuis config
-        float radius = (float) ModConfigs.CRACKER.RADIUS.get().doubleValue();
-        float epicenterHearts = 8.0F; // configurable plus tard
-        float blockBlast = (float) ModConfigs.CRACKER.EXPLOSION_STRENGTH.get().doubleValue();
+        float strength = ModConfigs.CRACKER.EXPLOSION_STRENGTH.get().floatValue();
         boolean breakBlocks = ModConfigs.CRACKER.BREAK_BLOCK.get();
 
-        Vector3d pos = this.position();
-
-        Explosion.Mode vanillaMode = breakBlocks ? Explosion.Mode.BREAK : Explosion.Mode.NONE;
-        Explosion boom = this.level.explode(this, pos.x, pos.y, pos.z,
-                blockBlast, false, vanillaMode);
-
-        // Dégâts aux entités proches
-        AxisAlignedBB area = new AxisAlignedBB(
-                pos.x - radius, pos.y - radius, pos.z - radius,
-                pos.x + radius, pos.y + radius, pos.z + radius
+        // Explosion sans feu, mode configurable
+        level.explode(
+                this.getOwner(),         // entité responsable
+                x, y, z,                 // position
+                strength,                // puissance
+                false,                   // causesFire (ici non)
+                breakBlocks ? Explosion.Mode.BREAK : Explosion.Mode.NONE
         );
-
-        List<LivingEntity> victims = this.level.getEntitiesOfClass(LivingEntity.class, area, e -> e.isAlive() && e.isPickable());
-
-        for (LivingEntity e : victims) {
-            double dist = e.position().distanceTo(pos);
-            if (dist > radius) continue;
-            double factor = Math.max(0.0, 1.0 - dist / radius);
-            float dmgHP = epicenterHearts * (float) factor * 2.0F;
-            e.hurt(DamageSource.explosion(boom), dmgHP);
-        }
-
-        remove();
     }
 
+
     @Override
-    public net.minecraft.network.IPacket<?> getAddEntityPacket() {
+    public IPacket<?> getAddEntityPacket() {
         return NetworkHooks.getEntitySpawningPacket(this);
     }
 }
