@@ -41,12 +41,11 @@ public class TimerKeyC2S {
                 CompoundNBT tag = held.getOrCreateTag();
                 boolean wasActive = tag.getBoolean(TimerBimItem.NBT_ACTIVE);
 
-                // On inverse l’état du timer
+                // ⏸ On inverse l’état du timer
                 TimerBimItem.toggleTimer(held);
-
                 boolean isNowActive = tag.getBoolean(TimerBimItem.NBT_ACTIVE);
 
-                // 🔊 Envoi du son correspondant au client
+                // 🔊 Joue le son côté client
                 TimerToggledS2C.Action soundAction = isNowActive
                         ? TimerToggledS2C.Action.ACTIVATED
                         : TimerToggledS2C.Action.DEACTIVATED;
@@ -56,6 +55,16 @@ public class TimerKeyC2S {
                         player.connection.connection,
                         NetworkDirection.PLAY_TO_CLIENT
                 );
+
+                // 🧹 Force la mise à jour HUD côté client
+                if (!isNowActive) {
+                    // Si désactivé → envoi d’un message 0 tick → HUD masqué
+                    Net.CH.sendTo(
+                            new fr.nokane.btoommods.net.TimerItemSyncS2C(-1, 0),
+                            player.connection.connection,
+                            NetworkDirection.PLAY_TO_CLIENT
+                    );
+                }
             }
         });
         ctx.get().setPacketHandled(true);
