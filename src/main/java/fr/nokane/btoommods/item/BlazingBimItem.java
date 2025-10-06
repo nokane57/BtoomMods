@@ -3,11 +3,14 @@ package fr.nokane.btoommods.item;
 import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.entity.item.BlazingBimEntity;
+import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.*;
 import net.minecraft.stats.Stats;
 import net.minecraft.util.*;
 import net.minecraft.world.World;
+
+import static fr.nokane.btoommods.sound.ModSounds.PI_ITEM;
 
 public class BlazingBimItem extends Item {
 
@@ -48,16 +51,23 @@ public class BlazingBimItem extends Item {
                 proj.setItem(stack.copy());
                 proj.setPos(player.getX(), player.getEyeY() - 0.1D, player.getZ());
 
-                float speedMult = ModConfigs.BLAZING.VITESSE_PROJECTILE.get().floatValue();
-                proj.shootFromRotation(player, player.xRot, player.yRot, 0.0F, 3.0F * power * speedMult, 1.0F);
+                // ⚙️ Synchronisation vitesse/poids
+                double speedMult = ModConfigs.BLAZING.VITESSE_PROJECTILE.get();
+                double poids = ModConfigs.BLAZING.POIDS_PROJECTILE.get();
+
+                // 🔢 Logique équilibrée : plus c’est lourd, moins ça va vite
+                // vitesse_effective = base * (speedMult / sqrt(poids))
+                float adjustedVelocity = (float) (3.0F * power * (speedMult / Math.sqrt(poids)));
+
+                // Tir avec précision (1.0F = petite dispersion)
+                proj.shootFromRotation(player, player.xRot, player.yRot, 0.0F, adjustedVelocity, 1.0F);
 
                 level.addFreshEntity(proj);
             }
         }
 
-        level.playSound(null, player.blockPosition(),
-                SoundEvents.CROSSBOW_SHOOT, SoundCategory.PLAYERS,
-                0.8F, 1.0F + (level.random.nextFloat() * 0.2F));
+                SoundUtils.playWorldSound(level, player.getX(), player.getY(), player.getZ(),
+                        PI_ITEM.get(), 1.3F, 1.0F);
 
         player.awardStat(Stats.ITEM_USED.get(this));
         if (!player.abilities.instabuild) stack.shrink(1);
