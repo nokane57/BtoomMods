@@ -2,6 +2,8 @@ package fr.nokane.btoommods.item;
 
 import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.item.TimerBimProjectileEntity;
+import fr.nokane.btoommods.net.Net;
+import fr.nokane.btoommods.net.TimerItemSyncS2C;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -11,12 +13,13 @@ import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.world.Explosion;
 import net.minecraft.world.World;
+import net.minecraftforge.fml.network.PacketDistributor;
 
 public class TimerBimItem extends Item {
 
-    public static final String NBT_ACTIVE      = "Active";
+    public static final String NBT_ACTIVE = "Active";
     public static final String NBT_HAS_STARTED = "HasStarted";
-    public static final String NBT_REMAINING   = "RemainingTicks";
+    public static final String NBT_REMAINING = "RemainingTicks";
 
     public TimerBimItem(Properties props) { super(props); }
 
@@ -56,58 +59,105 @@ public class TimerBimItem extends Item {
         if (!player.abilities.instabuild) stack.shrink(1);
     }
 
+    public static int getDisplaySeconds(ItemStack stack) {
+        CompoundNBT tag = stack.getOrCreateTag();
+        if (!tag.contains(NBT_REMAINING)) tag.putInt(NBT_REMAINING, getMaxTicks());
+        int ticks = tag.getInt(NBT_REMAINING);
+        if (ticks <= 0) return -1;
+        return Math.max(0, Math.min(getMaxSeconds(), (int)Math.ceil(ticks / 20.0)));
+    }
+
     @Override
     public void inventoryTick(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
         if (world.isClientSide) return;
-        tickTimer(stack, world, entity.getX(), entity.getY() + 0.5, entity.getZ(), true, null);
+        tickTimer(stack, world, entity, entity.getX(), entity.getY(), entity.getZ(), true, null);
     }
 
     @Override
     public boolean onEntityItemUpdate(ItemStack stack, ItemEntity entity) {
         World world = entity.level;
         if (world.isClientSide) return false;
-        return tickTimer(stack, world, entity.getX(), entity.getY() + 0.25, entity.getZ(), false, entity);
-    }
 
-    private boolean tickTimer(ItemStack stack, World world, double x, double y, double z,
-                              boolean shrinkOnExplode, ItemEntity entityToRemove) {
         CompoundNBT tag = stack.getOrCreateTag();
+        if (!tag.contains(NBT_REMAINING)) tag.putInt(NBT_REMAINING, getMaxTicks());
+        if (!tag.contains(NBT_HAS_STARTED)) tag.putBoolean(NBT_HAS_STARTED, false);
+        if (!tag.contains(NBT_ACTIVE)) tag.putBoolean(NBT_ACTIVE, false);
 
-        boolean active   = tag.getBoolean(NBT_ACTIVE);
-        int remaining    = tag.contains(NBT_REMAINING) ? tag.getInt(NBT_REMAINING) : getMaxTicks();
+        boolean active = tag.getBoolean(NBT_ACTIVE);
+        if (!active) return false;
 
-        if (!tag.contains(NBT_REMAINING)) {
-            tag.putInt(NBT_REMAINING, getMaxTicks());
-        }
-
-        if (active && remaining > 0) {
-            remaining--;
-            tag.putInt(NBT_REMAINING, remaining);
-
-            if (remaining == 0) {
-                explodeAndConsume(world, x, y, z);
-                if (shrinkOnExplode) {
-                    if (stack.getCount() > 0) stack.shrink(1);
-                } else if (entityToRemove != null && !world.isClientSide) {
-                    entityToRemove.remove();
-                }
-                return true;
-            }
-        }
+        tickTimer(stack, world, entity, entity.getX(), entity.getY(), entity.getZ(), false, entity);
         return false;
     }
 
-    @Override
-    public int getItemStackLimit(ItemStack stack) {
-        int v = ModConfigs.TIMER.STACK.get();
-        return Math.max(1, Math.min(v, 64));
+    private boolean tickTimer(ItemStack stack, World world, Entity holder,
+                              double x, double y, double z,
+                              boolean shrinkOnExplode, ItemEntity entityToRemove) {
+
+        CompoundNBT tag = stack.getOrCreateTag();
+        boolean active = tag.getBoolean(NBT_ACTIVE);
+        if (!active) return false;
+
+        int remaining = tag.contains(NBT_REMAINING) ? tag.getInt(NBT_REMAINING) : getMaxTicks();
+        if (remaining <= 0) return false;
+
+        int before = remaining;
+        remaining--;
+        tag.putInt(NBT_REMAINING, remaining);
+
+        // 💥 Explosion quand fini
+        if (remaining <= 0) {
+            // 🔁 Synchro finale: 0 tick restant -> le client purge et masque le HUD immédiatement
+            if (!world.isClientSide) {
+                if (entityToRemove != null) {
+                    Net.CH.send(
+                            PacketDistributor.TRACKING_ENTITY.with(() -> entityToRemove),
+                            new TimerItemSyncS2C(entityToRemove.getId(), 0)
+                    );
+                } else if (holder instanceof PlayerEntity) {
+                    PlayerEntity player = (PlayerEntity) holder;
+                    Net.CH.send(
+                            PacketDistributor.PLAYER.with(() -> (net.minecraft.entity.player.ServerPlayerEntity) player),
+                            new TimerItemSyncS2C(-1, 0)
+                    );
+                }
+            }
+
+            explodeAndConsume(world, x, y, z);
+            if (shrinkOnExplode) {
+                if (stack.getCount() > 0) stack.shrink(1);
+            } else if (entityToRemove != null && !world.isClientSide) {
+                entityToRemove.remove();
+            }
+            return true;
+        }
+
+        // 🔁 Synchronisation toutes les secondes
+        int secBefore = (int) Math.ceil(before / 20.0);
+        int secNow = (int) Math.ceil(remaining / 20.0);
+        if (!world.isClientSide && secNow != secBefore) {
+            if (entityToRemove != null) {
+                Net.CH.send(
+                        PacketDistributor.TRACKING_ENTITY.with(() -> entityToRemove),
+                        new TimerItemSyncS2C(entityToRemove.getId(), remaining)
+                );
+            } else if (holder instanceof PlayerEntity) {
+                PlayerEntity player = (PlayerEntity) holder;
+                Net.CH.send(
+                        PacketDistributor.PLAYER.with(() -> (net.minecraft.entity.player.ServerPlayerEntity) player),
+                        new TimerItemSyncS2C(-1, remaining)
+                );
+            }
+        }
+
+        return false;
     }
 
     public static void toggleTimer(ItemStack stack) {
         CompoundNBT tag = stack.getOrCreateTag();
-        boolean active     = tag.getBoolean(NBT_ACTIVE);
+        boolean active = tag.getBoolean(NBT_ACTIVE);
         boolean hasStarted = tag.getBoolean(NBT_HAS_STARTED);
-        int remaining      = tag.contains(NBT_REMAINING) ? tag.getInt(NBT_REMAINING) : getMaxTicks();
+        int remaining = tag.contains(NBT_REMAINING) ? tag.getInt(NBT_REMAINING) : getMaxTicks();
 
         if (!hasStarted && !active) {
             tag.putBoolean(NBT_ACTIVE, true);
@@ -116,25 +166,19 @@ public class TimerBimItem extends Item {
         } else if (active) {
             tag.putBoolean(NBT_ACTIVE, false);
             tag.putBoolean(NBT_HAS_STARTED, true);
-            tag.putInt(NBT_REMAINING, Math.max(0, remaining));
         } else {
             tag.putBoolean(NBT_ACTIVE, true);
             tag.putBoolean(NBT_HAS_STARTED, true);
-            tag.putInt(NBT_REMAINING, Math.max(0, remaining));
         }
-    }
-
-    public static int getDisplaySeconds(ItemStack stack) {
-        CompoundNBT tag = stack.getOrCreateTag();
-        if (!tag.getBoolean(NBT_HAS_STARTED)) return -1;
-        int ticks = tag.getInt(NBT_REMAINING);
-        return Math.max(0, Math.min(getMaxSeconds(), (int)Math.ceil(ticks / 20.0)));
+        tag.putInt(NBT_REMAINING, Math.max(0, remaining));
     }
 
     public static void explodeAndConsume(World world, double x, double y, double z) {
         world.explode(null, x, y, z,
                 ModConfigs.TIMER.EXPLOSION_STRENGTH.get().floatValue(),
                 ModConfigs.TIMER.CAUSES_FIRE.get(),
-                ModConfigs.TIMER.BREAK_BLOCKS.get() ? Explosion.Mode.BREAK : Explosion.Mode.NONE);
+                ModConfigs.TIMER.BREAK_BLOCKS.get()
+                        ? Explosion.Mode.BREAK
+                        : Explosion.Mode.NONE);
     }
 }

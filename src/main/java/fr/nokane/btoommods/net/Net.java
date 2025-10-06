@@ -45,6 +45,10 @@ public final class Net {
 
         CH.registerMessage(id++, TimerToggledS2C.class,
                 TimerToggledS2C::encode, TimerToggledS2C::decode, TimerToggledS2C::handle);
+
+        CH.registerMessage(id++, TimerItemSyncS2C.class,
+                TimerItemSyncS2C::encode, TimerItemSyncS2C::decode, TimerItemSyncS2C::handle,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT));
     }
 
     public static void toPlayer(net.minecraft.entity.player.ServerPlayerEntity sp, Object msg){

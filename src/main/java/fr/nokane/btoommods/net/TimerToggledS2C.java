@@ -1,8 +1,12 @@
 package fr.nokane.btoommods.net;
 
+import fr.nokane.btoommods.sound.ModSounds;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.audio.SimpleSound;
 import net.minecraft.network.PacketBuffer;
 import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.fml.DistExecutor;
+import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.fml.LogicalSide;
 import net.minecraftforge.fml.network.NetworkEvent;
 
 import java.util.function.Supplier;
@@ -26,12 +30,28 @@ public class TimerToggledS2C {
     }
 
     public static void handle(TimerToggledS2C msg, Supplier<NetworkEvent.Context> ctx) {
-        ctx.get().enqueueWork(() -> {
-            // On ne fait rien côté serveur
-            if (net.minecraftforge.fml.loading.FMLEnvironment.dist == Dist.CLIENT) {
-                fr.nokane.btoommods.net.client.TimerToggledS2CHandler.playSound(msg.action);
-            }
-        });
-        ctx.get().setPacketHandled(true);
+        NetworkEvent.Context context = ctx.get();
+
+        // Ne faire quelque chose que côté client
+        if (context.getDirection().getReceptionSide() == LogicalSide.CLIENT) {
+            context.enqueueWork(() -> handleClient(msg));
+        }
+
+        context.setPacketHandled(true);
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    private static void handleClient(TimerToggledS2C msg) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.level == null) return;
+
+        switch (msg.action) {
+            case ACTIVATED:
+                mc.getSoundManager().play(SimpleSound.forUI(ModSounds.PI_ITEM.get(), 1.0F));
+                break;
+            case DEACTIVATED:
+                mc.getSoundManager().play(SimpleSound.forUI(ModSounds.PULL_ITEM.get(), 1.0F));
+                break;
+        }
     }
 }

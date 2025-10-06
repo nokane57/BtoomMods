@@ -35,6 +35,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     private boolean hadFirstBounce = false;
     private int pickupDelay = 20;
     private long lastGroundHitTime = -1;
+    private boolean explodedClientSide = false;
 
     public TimerBimProjectileEntity(EntityType<? extends TimerBimProjectileEntity> type, World world) {
         super(type, world);
@@ -67,13 +68,13 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     public void tick() {
         super.tick();
 
-        // Gravité simple
+        // Gravité
         if (!this.isNoGravity()) {
             Vector3d m = this.getDeltaMovement();
             this.setDeltaMovement(m.x, m.y - ModConfigs.TIMER.POIDS_PROJECTILE.get(), m.z);
         }
 
-        // Correction anti-enfoncement
+        // Correction au sol
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -84,19 +85,30 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             }
         }
 
-        // Gestion du timer (serveur uniquement)
+        // Gestion du timer
         if (!level.isClientSide && isActive() && getRemainingTicks() > 0) {
             int remaining = getRemainingTicks() - 1;
             this.entityData.set(DATA_REMAINING, remaining);
 
             if (remaining <= 0) {
                 TimerBimItem.explodeAndConsume(level, getX(), getY(), getZ());
+                this.entityData.set(DATA_REMAINING, 0);
+                this.entityData.set(DATA_ACTIVE, false);
                 this.remove();
                 return;
             }
         }
 
+        // Client : détecte explosion pour le HUD
+        if (level.isClientSide && !explodedClientSide && getRemainingTicks() <= 0) {
+            explodedClientSide = true;
+        }
+
         if (pickupDelay > 0) pickupDelay--;
+    }
+
+    public boolean hasExplodedClientSide() {
+        return explodedClientSide || getRemainingTicks() <= 0 || !isAlive();
     }
 
     @Override
@@ -105,7 +117,6 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             this.onHitEntity((EntityRayTraceResult) hit);
             return;
         }
-
         if (hit.getType() != RayTraceResult.Type.BLOCK || level.isClientSide) return;
 
         BlockRayTraceResult br = (BlockRayTraceResult) hit;
@@ -113,7 +124,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         BlockPos bpos = br.getBlockPos();
         Vector3d loc = br.getLocation();
 
-        // ⚙️ Physique des rebonds
+        Vector3d v = this.getDeltaMovement();
         double restitutionGround = ModConfigs.TIMER.RESTITUTION_GROUND.get();
         double frictionGround = ModConfigs.TIMER.FRICTION_GROUND.get();
         double restitutionWall = 0.45;
@@ -122,8 +133,6 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         double stopEps = 0.04;
         double popSpeedGate = 0.25;
         double wallVerticalPop = 0.05;
-
-        Vector3d v = this.getDeltaMovement();
 
         switch (face) {
             case UP: {
@@ -146,27 +155,20 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
                 this.setDeltaMovement(newVx, newVy, newVz);
                 this.fallDistance = 0.0F;
                 lastGroundHitTime = level.getGameTime();
-
                 SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
-
             case NORTH:
-            case SOUTH: {
-                double addPop = (v.length() > popSpeedGate) ? wallVerticalPop : 0.0;
-                this.setDeltaMovement(v.x * frictionWall,
-                        Math.min(Math.max(v.y * 0.25, 0.0) + addPop, maxBounceUp * 0.6),
-                        -v.z * restitutionWall);
-                SoundUtils.playRebound(level, getX(), getY(), getZ());
-                break;
-            }
-
+            case SOUTH:
             case EAST:
             case WEST: {
                 double addPop = (v.length() > popSpeedGate) ? wallVerticalPop : 0.0;
-                this.setDeltaMovement(-v.x * restitutionWall,
+                Vector3d newV = new Vector3d(
+                        face.getAxis() == Direction.Axis.X ? -v.x * restitutionWall : v.x * frictionWall,
                         Math.min(Math.max(v.y * 0.25, 0.0) + addPop, maxBounceUp * 0.6),
-                        v.z * frictionWall);
+                        face.getAxis() == Direction.Axis.Z ? -v.z * restitutionWall : v.z * frictionWall
+                );
+                this.setDeltaMovement(newV);
                 SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
@@ -191,8 +193,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     @Override
     public void playerTouch(PlayerEntity player) {
         if (level.isClientSide) return;
-        if (!hadFirstBounce || pickupDelay > 0) return;
-        if (!isGrounded()) return;
+        if (!hadFirstBounce || pickupDelay > 0 || !isGrounded()) return;
 
         ItemStack stack = new ItemStack(ModItems.TIMER_BIM.get());
         CompoundNBT tag = stack.getOrCreateTag();
@@ -207,17 +208,14 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     private boolean isGrounded() {
         long now = level.getGameTime();
         if (now - lastGroundHitTime <= 2) return true;
-
         BlockPos below = this.blockPosition().below();
         double topY = below.getY() + level.getBlockState(below)
                 .getCollisionShape(level, below).max(Direction.Axis.Y);
-
         boolean nearSurface = (this.getY() - topY) <= 0.06;
         boolean slowY = Math.abs(this.getDeltaMovement().y) < 0.08;
         return nearSurface && slowY;
     }
 
-    // Getters
     public boolean isActive() { return this.entityData.get(DATA_ACTIVE); }
     public boolean hasStarted() { return this.entityData.get(DATA_STARTED); }
     public int getRemainingTicks() { return this.entityData.get(DATA_REMAINING); }
