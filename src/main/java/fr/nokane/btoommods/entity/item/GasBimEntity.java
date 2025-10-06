@@ -4,30 +4,30 @@ import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.sound.SoundUtils;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.*;
 import net.minecraft.entity.projectile.ProjectileItemEntity;
 import net.minecraft.item.Item;
+import net.minecraft.network.IPacket;
 import net.minecraft.util.Direction;
 import net.minecraft.util.IndirectEntityDamageSource;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.shapes.VoxelShape;
 import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.World;
+import net.minecraftforge.fml.network.NetworkHooks;
 
 public class GasBimEntity extends ProjectileItemEntity {
 
-    private int ticksFromLaunch = 0;
-    private long lastGroundHitGameTime = -1;
     private static final double GROUND_EPS = 0.02;
+    private long lastGroundHitTime = -1;
+    private int ticksSinceLaunch = 0;
 
-    public GasBimEntity(EntityType<? extends GasBimEntity> type, World level) {
-        super(type, level);
+    public GasBimEntity(EntityType<? extends GasBimEntity> type, World world) {
+        super(type, world);
     }
 
-    public GasBimEntity(EntityType<? extends GasBimEntity> type, World level, LivingEntity owner) {
-        super(type, owner, level);
+    public GasBimEntity(World world, LivingEntity owner) {
+        super(ModEntities.GAS_BIM.get(), owner, world);
     }
 
     @Override
@@ -38,17 +38,16 @@ public class GasBimEntity extends ProjectileItemEntity {
     @Override
     public void tick() {
         super.tick();
-        ticksFromLaunch++;
 
-        if (!level.isClientSide) {
-            // Explosion automatique si le gaz reste au sol trop longtemps
-            if (ticksFromLaunch >= ModConfigs.GAS.GAS_EXPLODE_AFTER_TICKS.get() && isGrounded()) {
-                explodeGas();
-                return;
-            }
+        ticksSinceLaunch++;
+
+        // 🎯 Gravité identique au Timer BIM
+        if (!this.isNoGravity()) {
+            Vector3d m = this.getDeltaMovement();
+            this.setDeltaMovement(m.x, m.y - ModConfigs.TIMER.POIDS_PROJECTILE.get(), m.z);
         }
 
-        // Anti-enfoncement dans les dalles/blocs minces
+        // 🔧 Anti-enfoncement
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -58,10 +57,16 @@ public class GasBimEntity extends ProjectileItemEntity {
                 this.setDeltaMovement(this.getDeltaMovement().multiply(0.6, 0.0, 0.6));
             }
         }
+
+        // 💨 Explosion du gaz après un délai
+        if (!level.isClientSide && ticksSinceLaunch >= ModConfigs.GAS.GAS_EXPLODE_AFTER_TICKS.get() && isGrounded()) {
+            explodeGas();
+        }
     }
 
     @Override
     protected void onHit(RayTraceResult hit) {
+        if (level.isClientSide) return;
         if (hit.getType() == RayTraceResult.Type.ENTITY) {
             this.onHitEntity((EntityRayTraceResult) hit);
             return;
@@ -74,68 +79,49 @@ public class GasBimEntity extends ProjectileItemEntity {
         BlockPos bpos = br.getBlockPos();
         Vector3d loc = br.getLocation();
 
-        // Paramètres physiques depuis config
-        double restitutionGround = ModConfigs.GAS.RESTITUTION_GROUND.get();
-        double frictionGround = ModConfigs.GAS.FRICTION_GROUND.get();
-        double restitutionWall = ModConfigs.GAS.RESTITUTION_WALL.get();
-        double frictionWall = ModConfigs.GAS.FRICTION_WALL.get();
-        double maxBounceUp = ModConfigs.GAS.MAX_BOUNCE_UP.get();
-        double stopEps = ModConfigs.GAS.STOP_EPS.get();
+        // 🔩 Rebond identique au Timer BIM
+        double restitutionGround = ModConfigs.TIMER.RESTITUTION_GROUND.get();
+        double frictionGround = ModConfigs.TIMER.FRICTION_GROUND.get();
+        double restitutionWall = ModConfigs.TIMER.RESTITUTION_WALL.get();
+        double frictionWall = ModConfigs.TIMER.FRICTION_WALL.get();
+        double maxBounceUp = ModConfigs.TIMER.MAX_BOUNCE_UP.get();
+        double stopEps = ModConfigs.TIMER.STOP_EPS.get();
 
-        double wallVerticalPop = 0.04;
-        double popSpeedGate = 0.25;
+        Vector3d v = this.getDeltaMovement();
 
         switch (face) {
             case UP: {
-                double topY = topYOf(bpos);
+                double topY = bpos.getY() + level.getBlockState(bpos).getCollisionShape(level, bpos).max(Direction.Axis.Y);
                 this.setPos(loc.x, Math.max(loc.y, topY) + GROUND_EPS, loc.z);
 
-                Vector3d v = this.getDeltaMovement();
                 double newVx = v.x * frictionGround;
                 double newVz = v.z * frictionGround;
                 double newVy = Math.abs(v.y) * restitutionGround;
-                newVy = Math.max(newVy, 0.02);
-                newVy = Math.min(newVy, maxBounceUp);
+                newVy = Math.min(Math.max(newVy, 0.02), maxBounceUp);
 
                 double horiz = Math.hypot(newVx, newVz);
                 if (newVy < stopEps && horiz < 0.05) {
                     this.setDeltaMovement(0.0, 0.0, 0.0);
                     this.fallDistance = 0.0F;
-                    lastGroundHitGameTime = level.getGameTime();
+                    lastGroundHitTime = level.getGameTime();
                     break;
                 }
 
                 this.setDeltaMovement(newVx, newVy, newVz);
                 this.fallDistance = 0.0F;
-                lastGroundHitGameTime = level.getGameTime();
-
-                // 🔊 Son de rebond
+                lastGroundHitTime = level.getGameTime();
                 SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
             case NORTH:
             case SOUTH: {
-                Vector3d v = this.getDeltaMovement();
-                double addPop = (v.length() > popSpeedGate) ? wallVerticalPop : 0.0;
-                double newVx = v.x * frictionWall;
-                double newVy = Math.max(v.y * 0.25, 0.0) + addPop;
-                newVy = Math.min(newVy, maxBounceUp * 0.6);
-                double newVz = -v.z * restitutionWall;
-                this.setDeltaMovement(newVx, newVy, newVz);
-
+                this.setDeltaMovement(v.x * frictionWall, Math.abs(v.y) * 0.25, -v.z * restitutionWall);
                 SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
             case EAST:
             case WEST: {
-                Vector3d v = this.getDeltaMovement();
-                double addPop = (v.length() > popSpeedGate) ? wallVerticalPop : 0.0;
-                double newVx = -v.x * restitutionWall;
-                double newVy = Math.max(v.y * 0.25, 0.0) + addPop;
-                newVy = Math.min(newVy, maxBounceUp * 0.6);
-                double newVz = v.z * frictionWall;
-                this.setDeltaMovement(newVx, newVy, newVz);
-
+                this.setDeltaMovement(-v.x * restitutionWall, Math.abs(v.y) * 0.25, v.z * frictionWall);
                 SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
@@ -146,61 +132,39 @@ public class GasBimEntity extends ProjectileItemEntity {
     protected void onHitEntity(EntityRayTraceResult hit) {
         Entity target = hit.getEntity();
         if (!level.isClientSide && target instanceof LivingEntity) {
-            float dmgHearts = ModConfigs.GAS.GAS_IMPACT_HEARTS.get().floatValue();
-            float dmgHP = dmgHearts * 2.0F;
-            target.hurt(new IndirectEntityDamageSource("gas_bim", this, this.getOwner()), dmgHP);
-
+            float dmg = (float) (ModConfigs.GAS.GAS_IMPACT_HEARTS.get() * 2.0);
+            target.hurt(new IndirectEntityDamageSource("gas_bim", this, this.getOwner()).setProjectile(), dmg);
             Vector3d v = this.getDeltaMovement();
-            double restitution = ModConfigs.GAS.RESTITUTION_WALL.get();
-            double maxBounce = ModConfigs.GAS.MAX_BOUNCE_UP.get();
-
-            Vector3d rebound = new Vector3d(
-                    -v.x * restitution,
-                    Math.min(Math.abs(v.y) * 0.4 + 0.08, maxBounce),
-                    -v.z * restitution
-            );
-
-            this.setDeltaMovement(rebound);
-            this.hasImpulse = true;
-
+            this.setDeltaMovement(-v.x * 0.3, 0.1, -v.z * 0.3);
             SoundUtils.playRebound(level, getX(), getY(), getZ());
         }
     }
 
     private boolean isGrounded() {
         long now = level.getGameTime();
-        if (now - lastGroundHitGameTime <= 2) return true;
+        if (now - lastGroundHitTime <= 2) return true;
         BlockPos below = this.blockPosition().below();
-        double topY = topYOf(below);
+        double topY = below.getY() + level.getBlockState(below)
+                .getCollisionShape(level, below).max(Direction.Axis.Y);
         boolean nearSurface = (this.getY() - topY) <= 0.06;
         boolean slowY = Math.abs(this.getDeltaMovement().y) < 0.08;
         return nearSurface && slowY;
     }
 
-    private double topYOf(BlockPos pos) {
-        VoxelShape s = level.getBlockState(pos).getCollisionShape(level, pos);
-        double add = s.isEmpty() ? 1.0 : s.max(Direction.Axis.Y);
-        return pos.getY() + add;
-    }
-
     private void explodeGas() {
         if (level.isClientSide) return;
-
-        BlockPos below = this.blockPosition().below();
-        double y = Math.max(this.getY(), topYOf(below)) + 0.01;
 
         fr.nokane.btoommods.entity.misc.GasCloudFieldEntity field =
                 ModEntities.GAS_CLOUD_FIELD.get().create(level);
         if (field != null) {
-            field.setPos(this.getX(), y, this.getZ());
+            field.setPos(this.getX(), this.getY() + 0.05, this.getZ());
             level.addFreshEntity(field);
         }
-
         this.remove();
     }
 
     @Override
-    public net.minecraft.network.IPacket<?> getAddEntityPacket() {
-        return net.minecraftforge.fml.network.NetworkHooks.getEntitySpawningPacket(this);
+    public IPacket<?> getAddEntityPacket() {
+        return NetworkHooks.getEntitySpawningPacket(this);
     }
 }
