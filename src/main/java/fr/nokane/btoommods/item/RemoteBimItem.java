@@ -3,12 +3,15 @@ package fr.nokane.btoommods.item;
 import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.entity.item.RemoteBimEntity;
+import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.*;
 import net.minecraft.stats.Stats;
 import net.minecraft.util.*;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.world.World;
+
+import static fr.nokane.btoommods.sound.ModSounds.PI_ITEM;
 
 public class RemoteBimItem extends Item {
 
@@ -39,16 +42,15 @@ public class RemoteBimItem extends Item {
         PlayerEntity player = (PlayerEntity) living;
 
         int charge = this.getUseDuration(stack) - timeLeft;
-        float f = BowItem.getPowerForTime(charge);
-        if (f < 0.1f) return;
+        float power = BowItem.getPowerForTime(charge);
+        if (power < 0.1f) return;
 
         if (!level.isClientSide) {
-            // ✅ Lecture depuis la RemoteConfig
+            // ✅ Vérifications (comme avant)
             int maxActive = ModConfigs.REMOTE.REMOTE_MAX_ACTIVE.get();
             int maxGlobal = ModConfigs.REMOTE.MAX_REMOTE.get();
             int scan = ModConfigs.REMOTE.REMOTE_SCAN_RADIUS.get();
 
-            // ✅ Comptage des bombes actives du joueur
             int active = level.getEntitiesOfClass(
                     RemoteBimEntity.class,
                     player.getBoundingBox().inflate(scan),
@@ -56,43 +58,37 @@ public class RemoteBimItem extends Item {
             ).size();
 
             if (active >= maxActive) {
-                level.playSound(null, player.blockPosition(),
-                        SoundEvents.UI_BUTTON_CLICK, SoundCategory.PLAYERS,
-                        0.5F, 0.5F);
+                level.playSound(null, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK, SoundCategory.PLAYERS, 0.5F, 0.5F);
                 return;
             }
 
-            // ✅ Vérifie le total global (corrigé)
-            AxisAlignedBB area = player.getBoundingBox().inflate(2048); // grande zone
+            AxisAlignedBB area = player.getBoundingBox().inflate(2048);
             long global = level.getEntitiesOfClass(RemoteBimEntity.class, area, e -> true).size();
 
             if (global >= maxGlobal) {
-                level.playSound(null, player.blockPosition(),
-                        SoundEvents.UI_BUTTON_CLICK, SoundCategory.PLAYERS,
-                        0.4F, 0.4F);
+                level.playSound(null, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK, SoundCategory.PLAYERS, 0.4F, 0.4F);
                 return;
             }
 
-            // ✅ Création et lancement du projectile
+            // ✅ Création du projectile avec poids & vitesse basés sur la config
             RemoteBimEntity proj = ModEntities.REMOTE_BIM.get().create(level);
             if (proj != null) {
                 proj.setOwner(player);
                 proj.setItem(stack.copy());
                 proj.setPos(player.getX(), player.getEyeY() - 0.1D, player.getZ());
 
-                double mult = ModConfigs.REMOTE.VITESSE_PROJECTILE.get();
-                float speed = (float) (mult * f);
-                proj.shootFromRotation(player, player.xRot, player.yRot, 0.0F, speed, 0.9F);
+                double vitesseBase = 1.7D * power * ModConfigs.REMOTE.VITESSE_PROJECTILE.get();
+                double poids = ModConfigs.REMOTE.POIDS_PROJECTILE.get();
+                float vitesseFinale = (float) (vitesseBase / Math.max(0.1, poids));
 
+                proj.shootFromRotation(player, player.xRot, player.yRot, 0.0F, vitesseFinale, 0.9F);
                 proj.assignSlotAuto();
                 level.addFreshEntity(proj);
             }
         }
 
-        // ✅ Son et consommation
-        level.playSound(null, player.blockPosition(),
-                SoundEvents.CROSSBOW_SHOOT, SoundCategory.PLAYERS,
-                0.8F, 1.0F);
+        SoundUtils.playWorldSound(level, player.getX(), player.getY(), player.getZ(),
+                PI_ITEM.get(), 1.3F, 1.0F);
         player.awardStat(Stats.ITEM_USED.get(this));
         if (!player.abilities.instabuild) stack.shrink(1);
     }
