@@ -1,3 +1,4 @@
+// fr/nokane/btoommods/client/ClientParticles.java
 package fr.nokane.btoommods.client;
 
 import fr.nokane.btoommods.particle.ModParticles;
@@ -14,8 +15,7 @@ public final class ClientParticles {
     public static void registerFactories(ParticleFactoryRegisterEvent e) {
         Minecraft.getInstance().particleEngine.register(
                 ModParticles.GAS_CLOUD.get(),
-                GasCloudParticle.Provider::new   // constructeur qui prend IAnimatedSprite
+                GasCloudParticle.Provider::new
         );
     }
 }
-

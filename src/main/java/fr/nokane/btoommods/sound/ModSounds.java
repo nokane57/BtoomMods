@@ -25,6 +25,9 @@ public class ModSounds {
     public static final RegistryObject<SoundEvent> SONAR_ITEM =
             register("sonar");
 
+    public static final RegistryObject<SoundEvent> GAS_ITEM =
+            register("gas");
+
     private static RegistryObject<SoundEvent> register(String name) {
         ResourceLocation id = new ResourceLocation(Btoommods.MOD_ID, name);
         return SOUND_EVENTS.register(name, () -> new SoundEvent(id));

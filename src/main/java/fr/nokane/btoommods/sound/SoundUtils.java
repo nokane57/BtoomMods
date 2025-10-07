@@ -19,6 +19,7 @@ public class SoundUtils {
     public static final float VOL_WORLD = 1.3F;
     public static final float VOL_REBOND = 1.35F;
     public static final float VOL_SONAR = 1.4F;
+    public static final float VOL_GAS = 1.35F;
 
     // --- CLIENT: sons d'interface ---
     @OnlyIn(Dist.CLIENT)
@@ -63,5 +64,10 @@ public class SoundUtils {
     @OnlyIn(Dist.CLIENT)
     public static void playSonar() {
         playUISound(ModSounds.SONAR_ITEM.get());
+    }
+
+    @OnlyIn(Dist.CLIENT)
+    public static void playGas() {
+        playUISound(ModSounds.GAS_ITEM.get(), 1.05F);
     }
 }

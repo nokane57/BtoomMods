@@ -16,6 +16,11 @@ import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.World;
 import net.minecraftforge.fml.network.NetworkHooks;
 
+/**
+ * Projectile du Gaz BIM :
+ * - Poids et rebonds identiques au Timer BIM
+ * - Crée un nuage de gaz au sol après un délai
+ */
 public class GasBimEntity extends ProjectileItemEntity {
 
     private static final double GROUND_EPS = 0.02;
@@ -38,16 +43,15 @@ public class GasBimEntity extends ProjectileItemEntity {
     @Override
     public void tick() {
         super.tick();
-
         ticksSinceLaunch++;
 
-        // 🎯 Gravité identique au Timer BIM
+        // Gravité identique au Timer BIM
         if (!this.isNoGravity()) {
             Vector3d m = this.getDeltaMovement();
-            this.setDeltaMovement(m.x, m.y - ModConfigs.TIMER.POIDS_PROJECTILE.get(), m.z);
+            this.setDeltaMovement(m.x, m.y - ModConfigs.GAS.POIDS_PROJECTILE.get() * 0.04D, m.z);
         }
 
-        // 🔧 Anti-enfoncement
+        // Anti-enfoncement dans le sol
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -58,7 +62,7 @@ public class GasBimEntity extends ProjectileItemEntity {
             }
         }
 
-        // 💨 Explosion du gaz après un délai
+        // Explosion du gaz après délai
         if (!level.isClientSide && ticksSinceLaunch >= ModConfigs.GAS.GAS_EXPLODE_AFTER_TICKS.get() && isGrounded()) {
             explodeGas();
         }
@@ -79,13 +83,12 @@ public class GasBimEntity extends ProjectileItemEntity {
         BlockPos bpos = br.getBlockPos();
         Vector3d loc = br.getLocation();
 
-        // 🔩 Rebond identique au Timer BIM
-        double restitutionGround = ModConfigs.TIMER.RESTITUTION_GROUND.get();
-        double frictionGround = ModConfigs.TIMER.FRICTION_GROUND.get();
-        double restitutionWall = ModConfigs.TIMER.RESTITUTION_WALL.get();
-        double frictionWall = ModConfigs.TIMER.FRICTION_WALL.get();
-        double maxBounceUp = ModConfigs.TIMER.MAX_BOUNCE_UP.get();
-        double stopEps = ModConfigs.TIMER.STOP_EPS.get();
+        double restitutionGround = ModConfigs.GAS.RESTITUTION_GROUND.get();
+        double frictionGround = ModConfigs.GAS.FRICTION_GROUND.get();
+        double restitutionWall = ModConfigs.GAS.RESTITUTION_WALL.get();
+        double frictionWall = ModConfigs.GAS.FRICTION_WALL.get();
+        double maxBounceUp = ModConfigs.GAS.MAX_BOUNCE_UP.get();
+        double stopEps = ModConfigs.GAS.STOP_EPS.get();
 
         Vector3d v = this.getDeltaMovement();
 
@@ -159,6 +162,7 @@ public class GasBimEntity extends ProjectileItemEntity {
         if (field != null) {
             field.setPos(this.getX(), this.getY() + 0.05, this.getZ());
             level.addFreshEntity(field);
+            SoundUtils.playGas(); // 🎧 son à l'apparition du gaz
         }
         this.remove();
     }

@@ -10,5 +10,8 @@
   },
   "sonar": {
     "sounds": [ { "name": "btoommods:sonar" } ]
+  },
+  "gas": {
+    "sounds": [ { "name": "btoommods:gas" } ]
   }
 }

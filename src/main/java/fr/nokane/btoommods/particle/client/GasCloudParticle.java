@@ -1,9 +1,13 @@
+// fr/nokane/btoommods/particle/client/GasCloudParticle.java
 package fr.nokane.btoommods.particle.client;
 
 import net.minecraft.client.particle.*;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.particles.BasicParticleType;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.api.distmarker.OnlyIn;
 
+@OnlyIn(Dist.CLIENT)
 public class GasCloudParticle extends SpriteTexturedParticle {
     private final IAnimatedSprite sprites;
 
@@ -12,10 +16,10 @@ public class GasCloudParticle extends SpriteTexturedParticle {
         super(world, x, y, z, vx, vy, vz);
         this.sprites = sprites;
         this.hasPhysics = false;
-        this.gravity = 0.02F;                // un peu plus “lourd”
+        this.gravity = 0.02F;
         this.lifetime = 50 + random.nextInt(30);
         this.quadSize = 0.6F + random.nextFloat() * 0.4F;
-        this.rCol = 1F; this.gCol = 1F; this.bCol = 1F; // texture déjà teintée = ok
+        this.rCol = 1F; this.gCol = 1F; this.bCol = 1F; // texture déjà teintée
         this.alpha = 0.35F;
         this.pickSprite(sprites);
     }
