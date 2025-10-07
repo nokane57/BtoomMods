@@ -1,4 +1,3 @@
-// fr/nokane/btoommods/radar/RadarEvents.java
 package fr.nokane.btoommods.radar;
 
 import fr.nokane.btoommods.Btoommods;
@@ -27,47 +26,40 @@ public final class RadarEvents {
         if (e.phase != TickEvent.Phase.END || e.player.level.isClientSide) return;
 
         e.player.getCapability(RadarCapability.CAP).ifPresent(data -> {
-            // --- Seuils anti-bruit (distance/tick et vitesse projetée sur l’axe avant/arrière)
-            final double EPS_DIST = 0.0125;         // ~1.25 cm / tick
-            final double EPS_VEL  = 0.0125;
+            final double EPS_DIST = 0.0001; // sensibilité faible (~0.25 cm)
+            final double EPS_VEL  = 0.0001;
 
-            // Vecteur "regard" horizontal (axe avant/arrière)
-            Vector3d look = e.player.getLookAngle();
-            double lx = look.x, lz = look.z;
-            double ll = Math.hypot(lx, lz);
-            if (ll < 1.0E-6) {
-                // fallback: si jamais le look est (0,0), on ne marque pas comme actif
-                lx = 0; lz = 0; ll = 1.0;
-            }
-
-            // Déplacement horizontal depuis le tick précédent
+            // Mouvement entre ce tick et le précédent
             double dx = e.player.getX() - e.player.xOld;
+            double dy = e.player.getY() - e.player.yOld;
             double dz = e.player.getZ() - e.player.zOld;
 
-            // Projection du déplacement sur l'axe avant/arrière (avance = +, recule = -)
-            double alongDist = (dx * lx + dz * lz) / ll;
+            // Vitesse actuelle
+            Vector3d vel = e.player.getDeltaMovement();
 
-            // Projection de la vitesse horizontale actuelle sur l'axe avant/arrière
-            Vector3d v = e.player.getDeltaMovement();
-            double alongVel  = (v.x * lx + v.z * lz) / ll;
+            // Distance totale parcourue dans le tick
+            double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-            // "Mouvement" = avance OU recule (module de la composante avant/arrière)
-            boolean forwardOrBackward =
-                    Math.abs(alongDist) > EPS_DIST || Math.abs(alongVel) > EPS_VEL;
+            // Si le joueur bouge (dans n'importe quel axe)
+            boolean moving =
+                    dist > EPS_DIST ||
+                            Math.abs(vel.x) > EPS_VEL ||
+                            Math.abs(vel.y) > EPS_VEL ||
+                            Math.abs(vel.z) > EPS_VEL;
 
-            // Ne pas "réveiller" si le joueur est accroupi
-            if (forwardOrBackward && !e.player.isCrouching()) {
+            // Ignorer les sneaks
+            if (moving && !e.player.isCrouching()) {
                 data.setLastMoveTick(e.player.level.getGameTime());
             }
 
-            // boosters = nombre d'items RADAR dans l'inventaire (hors implant)
+            // boosters = nombre de radars portés
             int extra = e.player.inventory.items.stream()
                     .filter(s -> !s.isEmpty() && s.getItem() == ModItems.RADAR_ITEM.get())
                     .mapToInt(s -> s.getCount())
                     .sum();
             data.setBoosters(Math.max(0, extra));
 
-            // l’implant est greffé par défaut
+            // Implant activé par défaut
             if (!data.hasImplant()) data.setImplant(true);
         });
     }
@@ -81,9 +73,9 @@ public final class RadarEvents {
                         net.minecraftforge.common.util.INBTSerializable<?> o =
                                 (net.minecraftforge.common.util.INBTSerializable<?>) oldCap;
                         @SuppressWarnings("unchecked")
-                        net.minecraftforge.common.util.INBTSerializable net =
-                                (net.minecraftforge.common.util.INBTSerializable) newCap;
-                        net.deserializeNBT(o.serializeNBT());
+                        net.minecraftforge.common.util.INBTSerializable<net.minecraft.nbt.INBT> n =
+                                (net.minecraftforge.common.util.INBTSerializable<net.minecraft.nbt.INBT>) newCap;
+                        n.deserializeNBT(o.serializeNBT());
                     }
                 })
         );
