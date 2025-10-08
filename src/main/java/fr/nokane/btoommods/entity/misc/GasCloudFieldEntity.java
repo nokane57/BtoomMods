@@ -29,8 +29,8 @@ public class GasCloudFieldEntity extends Entity {
 
     private static final int HURT_PERIOD_TICKS = 10;
 
-    private double radius = 1.0;     // s’étend jusqu’à RADIUS
-    private double alphaFactor = 1.0; // sert à atténuer le visuel et les dégâts en fin de vie
+    private double radius = 1.0;
+    private double alphaFactor = 1.0;
 
     public GasCloudFieldEntity(EntityType<? extends GasCloudFieldEntity> type, World level) {
         super(type, level);
@@ -45,52 +45,53 @@ public class GasCloudFieldEntity extends Entity {
         super.tick();
         age++;
 
-        // ▶️ Son à l'apparition (une seule fois, côté serveur → entendu par tous)
+        // ▶️ Son du gaz à l’apparition (une seule fois, côté serveur)
         if (!spawnSoundPlayed && !level.isClientSide) {
             spawnSoundPlayed = true;
-            SoundUtils.playWorldSound(level, getX(), getY(), getZ(), ModSounds.GAS_ITEM.get());
+            SoundUtils.playWorldSound(
+                    level,
+                    this.getX(), this.getY(), this.getZ(),
+                    ModSounds.GAS_ITEM.get(),
+                    SoundUtils.VOL_GAS,
+                    1.5F
+            );
         }
 
-        // Durée de vie = délai d'apparition du nuage + 200 (comme avant)
         final int lifetime = ModConfigs.GAS.GAS_EXPLODE_AFTER_TICKS.get() + 200;
         double lifeProgress = Math.min((double) age / lifetime, 1.0);
 
-        // 🎛️ Expansion → plateau → dissipation (lisser visuel + dégâts)
+        // Expansion → plateau → dissipation
         int baseRadius = ModConfigs.GAS.RADIUS.get();
         if (lifeProgress < 0.25) {
-            radius = baseRadius * (lifeProgress / 0.25); // 0 → R en 25% du temps
+            radius = baseRadius * (lifeProgress / 0.25);
             alphaFactor = 1.0;
         } else if (lifeProgress < 0.75) {
             radius = baseRadius;
             alphaFactor = 1.0;
         } else {
-            double t = (lifeProgress - 0.75) / 0.25; // 0 → 1
+            double t = (lifeProgress - 0.75) / 0.25;
             double inv = 1.0 - t;
-            radius = baseRadius * (0.6 + 0.4 * inv); // réduit un peu le disque
-            alphaFactor = inv;                       // fade out
+            radius = baseRadius * (0.6 + 0.4 * inv);
+            alphaFactor = inv;
         }
 
-        // Suit le relief local
         stayAttachedToGround();
 
         if (level.isClientSide) {
-            spawnParticles(); // visuel seulement
+            spawnParticles();
             return;
         }
 
-        // Dégâts (toutes les 0.5s)
         if (age % HURT_PERIOD_TICKS == 0) {
             applyGasDamage();
         }
 
-        // Fin de vie
         if (age > lifetime) {
             dropDisabledShellOnce();
             remove();
         }
     }
 
-    /** Calage de la hauteur du centre sur le relief (moyenne locale) */
     private void stayAttachedToGround() {
         int checkRadius = (int) Math.min(4, radius);
         double totalY = 0.0;
@@ -125,28 +126,22 @@ public class GasCloudFieldEntity extends Entity {
         return Double.NaN;
     }
 
-    /** Dégâts appliqués sur tout le volume du gaz (hauteur + largeur) */
+    /** Dégâts appliqués dans tout le volume du nuage (cylindre horizontal + fenêtre verticale). */
     private void applyGasDamage() {
         boolean raining = level.isRainingAt(this.blockPosition());
         double heartsPerSec = raining
                 ? ModConfigs.GAS.GAS_STORM_DAMAGE_HEARTH.get()
                 : ModConfigs.GAS.GAS_DAMAGE_HEARTH.get();
 
-        // atténuation en fin de vie
         heartsPerSec *= alphaFactor;
-
-        // dégâts en HP pour ce tick
         float dmgHP = (float) (heartsPerSec * 2.0 * HURT_PERIOD_TICKS / 20.0);
 
-        // baseY = sol moyen sous le centre du gaz
         double groundY = findGroundY(this.blockPosition());
         if (Double.isNaN(groundY)) groundY = this.getY();
 
-        // récupère les hauteurs configurées du gaz
         double minH = ModConfigs.GAS.GAS_MIN_HEIGHT.get();
         double maxH = ModConfigs.GAS.GAS_MAX_HEIGHT.get();
 
-        // étend vers le haut ET vers le bas (pour terrain vallonné)
         double minY = groundY - minH;
         double maxY = groundY + maxH;
         double margin = 0.5;
@@ -159,12 +154,9 @@ public class GasCloudFieldEntity extends Entity {
         );
 
         DamageSource gas = new DamageSource("gas_bim");
-        if (ModConfigs.GAS.GAS_DMG_BYPASS_ARMOR.get()) {
-            gas = gas.bypassArmor();
-        }
+        if (ModConfigs.GAS.GAS_DMG_BYPASS_ARMOR.get()) gas = gas.bypassArmor();
 
         for (LivingEntity e : new HashSet<>(level.getEntitiesOfClass(LivingEntity.class, aabb, LivingEntity::isAlive))) {
-            // distance horizontale seulement
             double dx = e.getX() - this.getX();
             double dz = e.getZ() - this.getZ();
             if ((dx * dx + dz * dz) <= (radius * radius)) {
@@ -173,8 +165,6 @@ public class GasCloudFieldEntity extends Entity {
         }
     }
 
-
-    /** Visuel : particules légères posées au sol dans le disque */
     private void spawnParticles() {
         Random r = this.level.random;
         int samples = (int) ((70 + radius * 10) * alphaFactor);
