@@ -89,7 +89,7 @@ public class BlazingBimEntity extends ProjectileItemEntity {
         this.remove();
     }
 
-    /** 🔥 Génère le champ de feu au point d’impact */
+    /** 🔥 Génère le champ de feu au point d’impact et joue le son */
     private void spawnFireField() {
         if (level.isClientSide) return;
 
@@ -103,8 +103,20 @@ public class BlazingBimEntity extends ProjectileItemEntity {
         if (field != null) {
             field.setPos(center.getX() + 0.5, center.getY(), center.getZ() + 0.5);
             level.addFreshEntity(field);
+
+            // 🔊 joue le son "fire" au moment exact où le champ est créé
+            fr.nokane.btoommods.sound.SoundUtils.playWorldSound(
+                    level,
+                    center.getX() + 0.5,
+                    center.getY(),
+                    center.getZ() + 0.5,
+                    fr.nokane.btoommods.sound.ModSounds.FIRE_ITEM.get(),
+                    fr.nokane.btoommods.sound.SoundUtils.VOL_WORLD,
+                    1.0F
+            );
         }
     }
+
 
     @Override
     public IPacket<?> getAddEntityPacket() {

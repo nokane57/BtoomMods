@@ -70,4 +70,9 @@ public class SoundUtils {
     public static void playGas() {
         playUISound(ModSounds.GAS_ITEM.get(), 1.05F);
     }
+
+    @OnlyIn(Dist.CLIENT)
+    public static void playFire() {
+        playUISound(ModSounds.FIRE_ITEM.get(), 1.05F);
+    }
 }
