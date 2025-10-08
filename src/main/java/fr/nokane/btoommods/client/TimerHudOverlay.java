@@ -19,10 +19,9 @@ import net.minecraftforge.fml.common.Mod;
 
 /**
  * HUD du Timer BIM :
- * - Affiche le compte à rebours du timer actif OU en pause
- * - Le projectile est prioritaire
- * - Disparaît quand aucun timer n’est actif ni visible
- * - Réapparaît quand le timer revient (main / sol)
+ * - Affiche le compte à rebours du timer actif OU le plus proche
+ * - Priorité : projectile > item au sol > en main (actif ou en pause)
+ * - Reste visible si le joueur tient une timer en pause mais qu’un timer actif est proche
  */
 @Mod.EventBusSubscriber(value = Dist.CLIENT)
 public class TimerHudOverlay extends AbstractGui {
@@ -30,9 +29,7 @@ public class TimerHudOverlay extends AbstractGui {
     private static final ResourceLocation HUD_TEXTURE =
             new ResourceLocation(Btoommods.MOD_ID, "textures/gui/timer_hud.png");
 
-    private static int lastDisplayedSecs = -1;
     private static boolean hideHud = false;
-    private static ItemStack lastTimerStack = ItemStack.EMPTY;
 
     @SubscribeEvent
     public static void onRenderOverlay(RenderGameOverlayEvent.Post event) {
@@ -43,16 +40,12 @@ public class TimerHudOverlay extends AbstractGui {
 
         int secs = detectTimerSeconds(mc);
 
-        // 💣 Si plus de timer actif → cacher HUD
         if (secs <= 0) {
             hideHud = true;
-            lastDisplayedSecs = -1;
             return;
         }
 
-        if (hideHud) return;
-
-        lastDisplayedSecs = secs;
+        hideHud = false;
 
         // --- Dessin du HUD ---
         int screenW = mc.getWindow().getGuiScaledWidth();
@@ -73,89 +66,47 @@ public class TimerHudOverlay extends AbstractGui {
         font.draw(matrix, text, textX, textY, color);
     }
 
-    /**
-     * 🔍 Détection du timer actif ou en pause à afficher :
-     * 1. Projectile actif (prioritaire)
-     * 2. Timer en main (actif ou en pause)
-     * 3. Timer au sol (actif ou en pause)
-     * 4. Timer dans l’inventaire (en pause)
-     */
+    /** 🔍 Détecte le timer actif le plus pertinent pour le HUD */
     private static int detectTimerSeconds(Minecraft mc) {
         double radius = ModConfigs.TIMER.HUD_RADIUS.get();
 
         // 1️⃣ Projectile prioritaire
         TimerBimProjectileEntity proj = mc.level.getEntitiesOfClass(
                         TimerBimProjectileEntity.class,
-                        mc.player.getBoundingBox().inflate(radius))
-                .stream()
+                        mc.player.getBoundingBox().inflate(radius)
+                ).stream()
                 .filter(p -> p.isAlive() && !p.hasExplodedClientSide() && p.getRemainingTicks() > 0)
                 .findFirst()
                 .orElse(null);
 
-        if (proj != null) {
-            hideHud = false;
-            lastTimerStack = ItemStack.EMPTY;
+        if (proj != null)
             return (int) Math.ceil(proj.getRemainingTicks() / 20.0);
-        }
 
-        // 2️⃣ Timer en main
-        ItemStack held = mc.player.getMainHandItem();
-        if (held.getItem() instanceof TimerBimItem) {
-            int ticks = held.getOrCreateTag().getInt(TimerBimItem.NBT_REMAINING);
-            boolean started = held.getOrCreateTag().getBoolean(TimerBimItem.NBT_HAS_STARTED);
-
-            if (started && ticks > 0) {
-                hideHud = false;
-                lastTimerStack = held;
-                return (int) Math.ceil(ticks / 20.0);
-            }
-        }
-
-        // 🔄 Si on change de slot (et l’ancien timer existe encore)
-        if (!(mc.player.getMainHandItem().getItem() instanceof TimerBimItem) && !lastTimerStack.isEmpty()) {
-            boolean started = lastTimerStack.getOrCreateTag().getBoolean(TimerBimItem.NBT_HAS_STARTED);
-            int ticks = lastTimerStack.getOrCreateTag().getInt(TimerBimItem.NBT_REMAINING);
-            if (started && ticks > 0) {
-                // HUD temporairement caché jusqu’à ce qu’on reprenne ce timer
-                hideHud = true;
-                return -1;
-            }
-        }
-
-        // 3️⃣ Timer au sol (actif ou en pause)
+        // 2️⃣ Timer au sol actif
         ItemEntity nearestItem = mc.level.getEntitiesOfClass(
                         ItemEntity.class,
                         mc.player.getBoundingBox().inflate(radius),
-                        e -> e.isAlive() && e.getItem().getItem() instanceof TimerBimItem)
-                .stream().findFirst().orElse(null);
+                        e -> e.isAlive() && e.getItem().getItem() instanceof TimerBimItem
+                ).stream()
+                .filter(e -> e.getItem().getOrCreateTag().getBoolean(TimerBimItem.NBT_ACTIVE))
+                .findFirst()
+                .orElse(null);
 
         if (nearestItem != null) {
-            ItemStack stack = nearestItem.getItem();
             int syncedTicks = nearestItem.getPersistentData().getInt("RemainingTicks");
-            boolean started = stack.getOrCreateTag().getBoolean(TimerBimItem.NBT_HAS_STARTED);
-            int ticks = syncedTicks > 0 ? syncedTicks : stack.getOrCreateTag().getInt(TimerBimItem.NBT_REMAINING);
+            if (syncedTicks > 0)
+                return (int) Math.ceil(syncedTicks / 20.0);
+        }
 
-            if (started && ticks > 0) {
-                hideHud = false;
-                lastTimerStack = ItemStack.EMPTY;
+        // 3️⃣ Timer en main (affiché même si en pause)
+        ItemStack held = mc.player.getMainHandItem();
+        if (held.getItem() instanceof TimerBimItem) {
+            int ticks = held.getOrCreateTag().getInt(TimerBimItem.NBT_REMAINING);
+            if (ticks > 0)
                 return (int) Math.ceil(ticks / 20.0);
-            }
         }
 
-        // 4️⃣ Timer inventaire (pause)
-        for (ItemStack stack : mc.player.inventory.items) {
-            if (stack.getItem() instanceof TimerBimItem) {
-                boolean started = stack.getOrCreateTag().getBoolean(TimerBimItem.NBT_HAS_STARTED);
-                int ticks = stack.getOrCreateTag().getInt(TimerBimItem.NBT_REMAINING);
-                if (started && ticks > 0) {
-                    hideHud = false;
-                    lastTimerStack = stack;
-                    return (int) Math.ceil(ticks / 20.0);
-                }
-            }
-        }
-
-        // 🔚 Rien d’actif → cacher HUD
+        // 🔚 Aucun timer actif détecté
         return -1;
     }
 }
