@@ -125,7 +125,7 @@ public class GasCloudFieldEntity extends Entity {
         return Double.NaN;
     }
 
-    /** Dégâts appliqués sur **tout le disque** (rayon = `radius`) */
+    /** Dégâts appliqués sur tout le volume du gaz (hauteur + largeur) */
     private void applyGasDamage() {
         boolean raining = level.isRainingAt(this.blockPosition());
         double heartsPerSec = raining
@@ -135,20 +135,27 @@ public class GasCloudFieldEntity extends Entity {
         // atténuation en fin de vie
         heartsPerSec *= alphaFactor;
 
-        // convertir en dégâts / tick d’application
+        // dégâts en HP pour ce tick
         float dmgHP = (float) (heartsPerSec * 2.0 * HURT_PERIOD_TICKS / 20.0);
 
-        // Couche proche du sol (on mesure le sol au centre)
+        // baseY = sol moyen sous le centre du gaz
         double groundY = findGroundY(this.blockPosition());
         if (Double.isNaN(groundY)) groundY = this.getY();
 
-        double minY = groundY + 0.10;
-        double maxY = groundY + 1.80;
-        double margin = 0.50;
+        // récupère les hauteurs configurées du gaz
+        double minH = ModConfigs.GAS.GAS_MIN_HEIGHT.get();
+        double maxH = ModConfigs.GAS.GAS_MAX_HEIGHT.get();
+
+        // étend vers le haut ET vers le bas (pour terrain vallonné)
+        double minY = groundY - minH;
+        double maxY = groundY + maxH;
+        double margin = 0.5;
 
         AxisAlignedBB aabb = new AxisAlignedBB(
-                getX() - radius - margin, minY, getZ() - radius - margin,
-                getX() + radius + margin, maxY, getZ() + radius + margin
+                getX() - radius - margin, minY,
+                getZ() - radius - margin,
+                getX() + radius + margin, maxY,
+                getZ() + radius + margin
         );
 
         DamageSource gas = new DamageSource("gas_bim");
@@ -157,7 +164,7 @@ public class GasCloudFieldEntity extends Entity {
         }
 
         for (LivingEntity e : new HashSet<>(level.getEntitiesOfClass(LivingEntity.class, aabb, LivingEntity::isAlive))) {
-            // disque horizontal : on filtre par distance 2D au centre
+            // distance horizontale seulement
             double dx = e.getX() - this.getX();
             double dz = e.getZ() - this.getZ();
             if ((dx * dx + dz * dz) <= (radius * radius)) {
@@ -165,6 +172,7 @@ public class GasCloudFieldEntity extends Entity {
             }
         }
     }
+
 
     /** Visuel : particules légères posées au sol dans le disque */
     private void spawnParticles() {

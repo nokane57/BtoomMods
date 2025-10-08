@@ -33,6 +33,8 @@ public class GasConfig {
     public final ForgeConfigSpec.DoubleValue FRICTION_WALL;
     public final ForgeConfigSpec.DoubleValue MAX_BOUNCE_UP;
     public final ForgeConfigSpec.DoubleValue STOP_EPS;
+    public final ForgeConfigSpec.DoubleValue GAS_MIN_HEIGHT;
+    public final ForgeConfigSpec.DoubleValue GAS_MAX_HEIGHT;
 
     public GasConfig(ForgeConfigSpec.Builder b) {
         b.push("gas_bim");
@@ -132,6 +134,16 @@ public class GasConfig {
                 "FR: Tolérance d’arrêt du projectile (plus haut = s’arrête plus vite).",
                 "EN: Stop epsilon — higher = stops sooner."
         ).defineInRange("stop_eps", 0.04D, 0.0D, 0.5D);
+
+        GAS_MIN_HEIGHT = b.comment(
+                "Hauteur en blocs sous le sol affectée par le gaz.",
+                "Utile pour frapper les entités légèrement plus basses."
+        ).defineInRange("min_height", 1.0D, 0.0D, 64.0D);
+
+        GAS_MAX_HEIGHT = b.comment(
+                "Hauteur en blocs au-dessus du sol affectée par le gaz.",
+                "Détermine l'épaisseur verticale du nuage."
+        ).defineInRange("max_height", 3.0D, 0.5D, 64.0D);
 
         b.pop();
     }
