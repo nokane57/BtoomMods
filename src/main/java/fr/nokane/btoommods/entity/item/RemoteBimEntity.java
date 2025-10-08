@@ -142,7 +142,7 @@ public class RemoteBimEntity extends ProjectileItemEntity {
     protected void onHitEntity(EntityRayTraceResult hit) {
         if (level.isClientSide) return;
 
-        // ✅ Colle aussi sur une entité
+        // 💥 Désactivation du rebond : colle directement sur l'entité
         this.setDeltaMovement(Vector3d.ZERO);
         this.noPhysics = true;
         this.setStuck(true);
@@ -172,6 +172,7 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         LivingEntity ownerLE = (getOwner() instanceof LivingEntity) ? (LivingEntity) getOwner() : null;
         DamageSource src = DamageSource.explosion(ownerLE);
 
+        // 💥 Dégâts
         for (LivingEntity e : sw.getEntitiesOfClass(LivingEntity.class, area, LivingEntity::isAlive)) {
             double d = Math.sqrt(e.distanceToSqr(this));
             if (d > radius) continue;
@@ -179,10 +180,20 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             e.hurt(src, dmg * 2.0F);
         }
 
+        // 🎯 Explosion
         sw.explode(this, getX(), getY(), getZ(), explosionPower, fire, mode);
         sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 1.0F, 0.9F + sw.random.nextFloat() * 0.2F);
+
+        // 🔊 Son PI pour le joueur le plus proche
+        ServerPlayerEntity nearest = (ServerPlayerEntity) sw.getNearestPlayer(getX(), getY(), getZ(), radius * 2, false);
+        if (nearest != null) {
+            SoundUtils.playWorldSound(sw, nearest.getX(), nearest.getY(), nearest.getZ(),
+                    fr.nokane.btoommods.sound.ModSounds.PI_ITEM.get(), 1.3F, 1.0F);
+        }
+
         this.remove();
     }
+
 
     public void assignSlotAuto() {
         if (!(level instanceof ServerWorld)) { setSlot(1); return; }

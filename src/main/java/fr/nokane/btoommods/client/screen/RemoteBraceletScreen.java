@@ -5,6 +5,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import fr.nokane.btoommods.net.Net;
 import fr.nokane.btoommods.net.RemoteQuerySlotsC2S;
 import fr.nokane.btoommods.net.RemoteTriggerC2S;
+import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.button.Button;
 import net.minecraft.client.settings.KeyBinding;
@@ -101,9 +102,13 @@ public class RemoteBraceletScreen extends Screen {
 
         public SlotButton(int x, int y, int w, int h, int slot) {
             super(x, y, w, h, new StringTextComponent(Integer.toString(slot)), b -> {
+                // 🔊 joue le son local du bracelet
+                SoundUtils.playClac(); // <--- joue "PULL_ITEM"
+
+                // 🚀 envoie la commande au serveur
                 Net.CH.sendToServer(new RemoteTriggerC2S(slot));
-                if (RemoteBraceletScreen.this.minecraft != null)
-                    RemoteBraceletScreen.this.minecraft.setScreen(null);
+
+                // ❌ ne ferme plus l’écran automatiquement
             });
             this.slot = slot;
         }
@@ -135,6 +140,7 @@ public class RemoteBraceletScreen extends Screen {
         }
     }
 
+
     // 1..8 pour déclencher + ESC pour fermer
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
@@ -145,9 +151,9 @@ public class RemoteBraceletScreen extends Screen {
             slot = (keyCode - GLFW.GLFW_KEY_KP_1) + 1;
 
         if (slot >= 1 && slot <= 8) {
+            SoundUtils.playClac(); // 🔊 son sur touche aussi
             Net.CH.sendToServer(new RemoteTriggerC2S(slot));
-            if (this.minecraft != null) this.minecraft.setScreen(null);
-            return true;
+            return true; // ❌ ne ferme plus l’écran
         }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             if (this.minecraft != null) this.minecraft.setScreen(null);
@@ -155,6 +161,7 @@ public class RemoteBraceletScreen extends Screen {
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
+
 
     // Miroir des touches + requête périodique (toutes les 10 ticks)
     @Override
