@@ -20,7 +20,6 @@ import net.minecraft.particles.ParticleTypes;
 import net.minecraft.util.*;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.vector.Vector3d;
-import net.minecraft.world.Explosion;
 import net.minecraft.world.World;
 import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.NetworkHooks;
@@ -64,12 +63,14 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         this.entityData.set(SLOT_ID, Math.max(1, Math.min(8, s)));
     }
 
-    public boolean isStuck() {
-        return this.entityData.get(STUCK);
-    }
+    public boolean isStuck() { return this.entityData.get(STUCK); }
+    private void setStuck(boolean b) { this.entityData.set(STUCK, b); }
 
-    private void setStuck(boolean b) {
-        this.entityData.set(STUCK, b);
+    /* 👉 Laisse Minecraft appliquer la gravité une seule fois par tick. */
+    @Override
+    protected float getGravity() {
+        double poids = Math.max(0.1, ModConfigs.REMOTE.POIDS_PROJECTILE.get());
+        return (float)(0.03D / poids); // plus lourd = chute plus douce
     }
 
     @Override
@@ -79,16 +80,7 @@ public class RemoteBimEntity extends ProjectileItemEntity {
 
         if (tryOwnerSneakPickup()) return;
 
-        // Gravité selon poids
-        if (!isStuck() && !this.isNoGravity()) {
-            Vector3d v = this.getDeltaMovement();
-            double poids = ModConfigs.REMOTE.POIDS_PROJECTILE.get();
-            this.setDeltaMovement(v.x, v.y - (0.04D * poids), v.z);
-        }
-
-        if (!isStuck()) checkEntityCollision();
-
-        // Durée de vie
+        // ⏳ Despawn si non collée trop longtemps
         int lifetime = ModConfigs.REMOTE.REMOTE_LIFETIME_TICKS.get();
         if (!isStuck() && this.tickCount > lifetime) {
             this.remove();
@@ -100,6 +92,7 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             this.noPhysics = true;
             this.setInvisible(true);
 
+            // Ping visuel propriétaire
             if (ownerMarkerCooldown-- <= 0) {
                 ownerMarkerCooldown = ModConfigs.REMOTE.REMOTE_MARKER_COOLDOWN_TICKS.get();
                 if (ownerMarkerCooldown <= 0) ownerMarkerCooldown = 20;
@@ -111,13 +104,27 @@ public class RemoteBimEntity extends ProjectileItemEntity {
                     }
                 }
             }
+
+            // Halo discret owner-only
+            if (getOwner() instanceof ServerPlayerEntity && level instanceof ServerWorld && this.tickCount % 10 == 0) {
+                ServerPlayerEntity sp = (ServerPlayerEntity) getOwner();
+                ((ServerWorld) level).sendParticles(sp, ParticleTypes.END_ROD,
+                        true, this.getX(), this.getY() + 0.05, this.getZ(),
+                        6, 0.04, 0.04, 0.04, 0.001);
+            }
             return;
         }
 
-        Vector3d v = this.getDeltaMovement();
-        this.setDeltaMovement(v.x * 0.99, v.y, v.z * 0.99);
+        // (optionnel) petite traînée owner-only
+        if (getOwner() instanceof ServerPlayerEntity && level instanceof ServerWorld && this.tickCount % 3 == 0) {
+            ServerPlayerEntity sp = (ServerPlayerEntity) getOwner();
+            ((ServerWorld) level).sendParticles(sp, ParticleTypes.CRIT,
+                    true, this.getX(), this.getY(), this.getZ(),
+                    2, 0.02, 0.02, 0.02, 0.001);
+        }
     }
 
+    /* ✅ Gestion propre des impacts via raytrace de Minecraft */
     @Override
     protected void onHit(RayTraceResult hit) {
         if (level.isClientSide) return;
@@ -127,37 +134,36 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             Direction face = br.getDirection();
             Vector3d loc = br.getLocation();
 
-            double offset = 0.02;
-            this.setPos(loc.x + face.getStepX() * offset,
-                    loc.y + face.getStepY() * offset,
-                    loc.z + face.getStepZ() * offset);
+            // Décale légèrement pour éviter l'enfouissement
+            double eps = 0.02D;
+            this.setPos(loc.x + face.getStepX() * eps,
+                    loc.y + face.getStepY() * eps,
+                    loc.z + face.getStepZ() * eps);
 
             this.setDeltaMovement(Vector3d.ZERO);
             this.noPhysics = true;
             this.setStuck(true);
             this.setInvisible(true);
 
-            SoundUtils.playRebound(level, getX(), getY(), getZ());
+            // pas de "rebond"
+            // SoundUtils.playRebound(...) supprimé
+        } else if (hit.getType() == RayTraceResult.Type.ENTITY) {
+            // Laisse le handler dédié faire le travail
+            onHitEntity((EntityRayTraceResult) hit);
         }
     }
 
-    /** Collision manuelle avec entités proches */
-    private void checkEntityCollision() {
-        Vector3d move = this.getDeltaMovement();
-        AxisAlignedBB aabb = this.getBoundingBox().expandTowards(move).inflate(0.3);
-        List<Entity> entities = this.level.getEntities(this, aabb, e -> e.isAlive() && e.isPickable() && e != this.getOwner());
+    @Override
+    protected void onHitEntity(EntityRayTraceResult result) {
+        if (level.isClientSide) return;
 
-        for (Entity entity : entities) {
-            AxisAlignedBB targetBox = entity.getBoundingBox().inflate(0.2);
-            if (targetBox.intersects(aabb)) {
-                Vector3d hitPos = entity.position().add(0, entity.getBbHeight() / 2.0, 0);
-                this.setPos(hitPos.x, hitPos.y, hitPos.z);
-                Vector3d vel = this.getDeltaMovement();
-                this.setDeltaMovement(0, Math.min(vel.y, 0.0), 0);
-                SoundUtils.playRebound(level, getX(), getY(), getZ());
-                return;
-            }
-        }
+        // Colle la charge là où elle touche l'entité, sans rebond
+        Vector3d loc = result.getLocation();
+        this.setPos(loc.x, loc.y, loc.z);
+        this.setDeltaMovement(Vector3d.ZERO);
+        this.noPhysics = true;
+        this.setStuck(true);
+        this.setInvisible(true);
     }
 
     /** 💥 Explosion sans jamais détruire les items */
@@ -168,68 +174,45 @@ public class RemoteBimEntity extends ProjectileItemEntity {
 
         double radius = ModConfigs.REMOTE.REMOTE_RADIUS.get();
         boolean breakBlocks = ModConfigs.REMOTE.BREAK_BLOCKS.get();
-        boolean fire = ModConfigs.REMOTE.REMOTE_CAUSES_FIRE.get();
         boolean noItemDestroy = ModConfigs.REMOTE.REMOTE_NO_ITEM_DESTROY.get();
         double blockBreakRadius = ModConfigs.REMOTE.REMOTE_BREAK_RADIUS.get();
 
-        float explosionPower = (float) Math.min(8.0, radius / 2.0);
-
-        // Effet visuel + son
         sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS,
                 0.7F, 0.9F + sw.random.nextFloat() * 0.2F);
         sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, getX(), getY(), getZ(),
-                1, 0.0, 0.0, 0.0, 0.0);
+                1, 0, 0, 0, 0);
 
-        // ✅ Casse les blocs manuellement si activé
         if (breakBlocks) {
-            int blockRadius = (int) Math.ceil(blockBreakRadius);
+            int r = (int) Math.ceil(blockBreakRadius);
             BlockPos.Mutable pos = new BlockPos.Mutable();
-            for (int x = -blockRadius; x <= blockRadius; x++) {
-                for (int y = -blockRadius; y <= blockRadius; y++) {
-                    for (int z = -blockRadius; z <= blockRadius; z++) {
-                        pos.set(center.getX() + x, center.getY() + y, center.getZ() + z);
-                        double dist = Math.sqrt(x * x + y * y + z * z);
-                        if (dist <= blockBreakRadius) {
-                            if (!sw.isEmptyBlock(pos)
-                                    && sw.getBlockState(pos).getExplosionResistance(sw, pos, null) < 200.0F) {
-
-                                // 💡 Drop les items, jamais détruits
-                                sw.destroyBlock(pos, true);
-                            }
-                        }
+            for (int x = -r; x <= r; x++) for (int y = -r; y <= r; y++) for (int z = -r; z <= r; z++) {
+                pos.set(center.getX() + x, center.getY() + y, center.getZ() + z);
+                double d = Math.sqrt(x*x + y*y + z*z);
+                if (d <= blockBreakRadius) {
+                    if (!sw.isEmptyBlock(pos)
+                            && sw.getBlockState(pos).getExplosionResistance(sw, pos, null) < 200.0F) {
+                        sw.destroyBlock(pos, true); // drop, jamais détruit
                     }
                 }
             }
         }
 
-        // ✅ Dégâts manuels (seulement vivants)
-        AxisAlignedBB area = new AxisAlignedBB(
+        AxisAlignedBB aabb = new AxisAlignedBB(
                 getX() - radius, getY() - radius, getZ() - radius,
-                getX() + radius, getY() + radius, getZ() + radius
-        );
+                getX() + radius, getY() + radius, getZ() + radius);
 
         LivingEntity ownerLE = (getOwner() instanceof LivingEntity) ? (LivingEntity) getOwner() : null;
         DamageSource src = DamageSource.explosion(ownerLE);
 
-        List<Entity> entities = sw.getEntities(this, area, e ->
-                e.isAlive() && (!(e instanceof ItemEntity) || !noItemDestroy));
-
-        for (Entity e : entities) {
+        List<Entity> list = sw.getEntities(this, aabb, e -> e.isAlive() && (!(e instanceof ItemEntity) || !noItemDestroy));
+        for (Entity e : list) {
             if (e instanceof LivingEntity) {
-                LivingEntity living = (LivingEntity) e;
-                double d = Math.sqrt(living.distanceToSqr(this));
+                LivingEntity le = (LivingEntity) e;
+                double d = Math.sqrt(le.distanceToSqr(this));
                 if (d > radius) continue;
-                float dmg = (float) (8.0 * (1.0 - d / radius));
-                living.hurt(src, dmg * 2.0F);
+                float dmg = (float)(8.0 * (1.0 - d / radius));
+                le.hurt(src, dmg * 2.0F);
             }
-        }
-
-        // 🔊 Bip sonore pour le joueur proche
-        ServerPlayerEntity nearest = (ServerPlayerEntity)
-                sw.getNearestPlayer(getX(), getY(), getZ(), radius * 2, false);
-        if (nearest != null) {
-            SoundUtils.playWorldSound(sw, nearest.getX(), nearest.getY(), nearest.getZ(),
-                    fr.nokane.btoommods.sound.ModSounds.PI_ITEM.get(), 1.3F, 1.0F);
         }
 
         this.remove();
@@ -255,10 +238,7 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         }
 
         for (int s = 1; s <= 8; s++) {
-            if (!taken.contains(s)) {
-                setSlot(s);
-                return;
-            }
+            if (!taken.contains(s)) { setSlot(s); return; }
         }
         setSlot(1);
     }

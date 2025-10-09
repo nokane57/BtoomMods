@@ -46,7 +46,8 @@ public class RemoteBimItem extends Item {
         if (power < 0.1f) return;
 
         if (!level.isClientSide) {
-            // ✅ Vérifications (comme avant)
+
+            // 🔒 Vérifications limites
             int maxActive = ModConfigs.REMOTE.REMOTE_MAX_ACTIVE.get();
             int maxGlobal = ModConfigs.REMOTE.MAX_REMOTE.get();
             int scan = ModConfigs.REMOTE.REMOTE_SCAN_RADIUS.get();
@@ -62,33 +63,46 @@ public class RemoteBimItem extends Item {
                 return;
             }
 
-            AxisAlignedBB area = player.getBoundingBox().inflate(2048);
-            long global = level.getEntitiesOfClass(RemoteBimEntity.class, area, e -> true).size();
+            long global = level.getEntitiesOfClass(
+                    RemoteBimEntity.class,
+                    new AxisAlignedBB(player.getX() - 2048, player.getY() - 2048, player.getZ() - 2048,
+                            player.getX() + 2048, player.getY() + 2048, player.getZ() + 2048),
+                    e -> true
+            ).size();
 
             if (global >= maxGlobal) {
                 level.playSound(null, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK, SoundCategory.PLAYERS, 0.4F, 0.4F);
                 return;
             }
 
-            // ✅ Création du projectile avec poids & vitesse basés sur la config
+            // 🧨 Création du projectile
             RemoteBimEntity proj = ModEntities.REMOTE_BIM.get().create(level);
             if (proj != null) {
                 proj.setOwner(player);
                 proj.setItem(stack.copy());
                 proj.setPos(player.getX(), player.getEyeY() - 0.1D, player.getZ());
 
+                // ⚖️ Vitesse basée sur le poids
+                double poids = Math.max(0.1, ModConfigs.REMOTE.POIDS_PROJECTILE.get());
                 double vitesseBase = 1.7D * power * ModConfigs.REMOTE.VITESSE_PROJECTILE.get();
-                double poids = ModConfigs.REMOTE.POIDS_PROJECTILE.get();
-                float vitesseFinale = (float) (vitesseBase / Math.max(0.1, poids));
+                float vitesseFinale = (float) (vitesseBase / Math.sqrt(poids));
 
-                proj.shootFromRotation(player, player.xRot, player.yRot, 0.0F, vitesseFinale, 0.9F);
+                // 🏹 Tir sans arc excessif
+                proj.shootFromRotation(player, player.xRot, player.yRot, 0.0F, vitesseFinale, 0.8F);
+
+                // ✅ Slot automatique
                 proj.assignSlotAuto();
+
+                // ✅ Ajout à la map
                 level.addFreshEntity(proj);
             }
         }
 
+        // 🔊 Son de tir
         SoundUtils.playWorldSound(level, player.getX(), player.getY(), player.getZ(),
                 PI_ITEM.get(), 1.3F, 1.0F);
+
+        // Stat + retrait d’item
         player.awardStat(Stats.ITEM_USED.get(this));
         if (!player.abilities.instabuild) stack.shrink(1);
     }
