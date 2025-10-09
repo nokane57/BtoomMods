@@ -18,6 +18,7 @@ public class RemoteConfig {
     public final ForgeConfigSpec.IntValue REMOTE_SCAN_RADIUS;          // rayon scan (compte/slot)
     public final ForgeConfigSpec.IntValue REMOTE_TRIGGER_RADIUS;       // rayon déclenchement
     public final ForgeConfigSpec.IntValue REMOTE_MARKER_COOLDOWN_TICKS;// cooldown marker (ticks)
+    public final ForgeConfigSpec.IntValue REMOTE_LIFETIME_TICKS;
 
     public RemoteConfig(ForgeConfigSpec.Builder b) {
         b.push("remote_bim");
@@ -76,6 +77,12 @@ public class RemoteConfig {
                 "FR: Temps entre deux envois de marqueur (ticks) vers le joueur propriétaire.",
                 "EN: Cooldown between marker updates sent to the owner (in ticks)."
         ).defineInRange("marker_cooldown_ticks", 20, 1, 200);
+
+        REMOTE_LIFETIME_TICKS = b.comment(
+                "FR: Durée de vie (en ticks) d'une Remote BIM avant suppression si elle n'est pas collée.",
+                "EN: Lifetime (in ticks) before a Remote BIM despawns if not stuck."
+        ).defineInRange("remote_lifetime_ticks", 1200, 100, 20 * 60 * 10); // 1 min par défaut
+
 
         b.pop();
     }

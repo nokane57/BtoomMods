@@ -23,6 +23,7 @@ import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.NetworkHooks;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -85,9 +86,12 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             this.setDeltaMovement(v.x, v.y - (0.04D * poids), v.z);
         }
 
-        // ⏳ Suppression après durée de vie (si non collée)
-        int lifetime = ModConfigs.REMOTE.REMOTE_MARKER_COOLDOWN_TICKS.get();
-        if (!isStuck() && lifetime > 0 && this.tickCount > lifetime) {
+        // ✅ Vérifie les collisions avec les entités (empêche de traverser)
+        if (!isStuck()) checkEntityCollision();
+
+        // ⏳ Suppression après durée de vie (configurable)
+        int lifetime = ModConfigs.REMOTE.REMOTE_LIFETIME_TICKS.get();
+        if (!isStuck() && this.tickCount > lifetime) {
             this.remove();
             return;
         }
@@ -97,9 +101,11 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             this.noPhysics = true;
             this.setInvisible(true);
 
+            // 🛰️ Envoi périodique de la position au propriétaire
             if (ownerMarkerCooldown-- <= 0) {
                 ownerMarkerCooldown = ModConfigs.REMOTE.REMOTE_MARKER_COOLDOWN_TICKS.get();
                 if (ownerMarkerCooldown <= 0) ownerMarkerCooldown = 20;
+
                 if (getOwner() instanceof ServerPlayerEntity) {
                     ServerPlayerEntity sp = (ServerPlayerEntity) getOwner();
                     if (sp.connection != null && !sp.hasDisconnected()) {
@@ -120,14 +126,16 @@ public class RemoteBimEntity extends ProjectileItemEntity {
     protected void onHit(RayTraceResult hit) {
         if (level.isClientSide) return;
 
-        // ❌ Aucun rebond → colle directement à la surface
+        // ✅ Colle immédiatement sur la surface d’un bloc
         if (hit.getType() == RayTraceResult.Type.BLOCK) {
             BlockRayTraceResult br = (BlockRayTraceResult) hit;
             Direction face = br.getDirection();
             Vector3d loc = br.getLocation();
 
             double offset = 0.02;
-            this.setPos(loc.x + face.getStepX() * offset, loc.y + face.getStepY() * offset, loc.z + face.getStepZ() * offset);
+            this.setPos(loc.x + face.getStepX() * offset,
+                    loc.y + face.getStepY() * offset,
+                    loc.z + face.getStepZ() * offset);
 
             this.setDeltaMovement(Vector3d.ZERO);
             this.noPhysics = true;
@@ -138,17 +146,28 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         }
     }
 
-    @Override
-    protected void onHitEntity(EntityRayTraceResult hit) {
-        if (level.isClientSide) return;
+    /** ✅ Détection manuelle d'entités proches pour éviter de les traverser */
+    private void checkEntityCollision() {
+        Vector3d move = this.getDeltaMovement();
+        AxisAlignedBB aabb = this.getBoundingBox().expandTowards(move).inflate(0.3);
+        List<Entity> entities = this.level.getEntities(this, aabb, e ->
+                e.isAlive() && e.isPickable() && e != this.getOwner());
 
-        // 💥 Désactivation du rebond : colle directement sur l'entité
-        this.setDeltaMovement(Vector3d.ZERO);
-        this.noPhysics = true;
-        this.setStuck(true);
-        this.setInvisible(true);
+        for (Entity entity : entities) {
+            AxisAlignedBB targetBox = entity.getBoundingBox().inflate(0.2);
+            if (targetBox.intersects(aabb)) {
+                // 💥 Impact détecté → s’arrête net
+                Vector3d hitPos = entity.position().add(0, entity.getBbHeight() / 2.0, 0);
+                this.setPos(hitPos.x, hitPos.y, hitPos.z);
 
-        SoundUtils.playRebound(level, getX(), getY(), getZ());
+                // Stop horizontalement, conserve la gravité
+                Vector3d vel = this.getDeltaMovement();
+                this.setDeltaMovement(0, Math.min(vel.y, 0.0), 0);
+
+                SoundUtils.playRebound(level, getX(), getY(), getZ());
+                return;
+            }
+        }
     }
 
     public void detonateNow() {
@@ -172,7 +191,7 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         LivingEntity ownerLE = (getOwner() instanceof LivingEntity) ? (LivingEntity) getOwner() : null;
         DamageSource src = DamageSource.explosion(ownerLE);
 
-        // 💥 Dégâts
+        // 💥 Dégâts progressifs
         for (LivingEntity e : sw.getEntitiesOfClass(LivingEntity.class, area, LivingEntity::isAlive)) {
             double d = Math.sqrt(e.distanceToSqr(this));
             if (d > radius) continue;
@@ -182,7 +201,8 @@ public class RemoteBimEntity extends ProjectileItemEntity {
 
         // 🎯 Explosion
         sw.explode(this, getX(), getY(), getZ(), explosionPower, fire, mode);
-        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 1.0F, 0.9F + sw.random.nextFloat() * 0.2F);
+        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS,
+                1.0F, 0.9F + sw.random.nextFloat() * 0.2F);
 
         // 🔊 Son PI pour le joueur le plus proche
         ServerPlayerEntity nearest = (ServerPlayerEntity) sw.getNearestPlayer(getX(), getY(), getZ(), radius * 2, false);
@@ -194,16 +214,16 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         this.remove();
     }
 
-
     public void assignSlotAuto() {
         if (!(level instanceof ServerWorld)) { setSlot(1); return; }
         UUID me = (getOwner() != null ? getOwner().getUUID() : new UUID(0, 0));
         ServerWorld sw = (ServerWorld) level;
 
         int scan = ModConfigs.REMOTE.REMOTE_SCAN_RADIUS.get();
-        AxisAlignedBB box = new AxisAlignedBB(getX() - scan, getY() - scan, getZ() - scan, getX() + scan, getY() + scan, getZ() + scan);
+        AxisAlignedBB box = new AxisAlignedBB(getX() - scan, getY() - scan, getZ() - scan,
+                getX() + scan, getY() + scan, getZ() + scan);
 
-        Set<Integer> taken = new HashSet<Integer>();
+        Set<Integer> taken = new HashSet<>();
         for (RemoteBimEntity e : sw.getEntitiesOfClass(RemoteBimEntity.class, box)) {
             if (e.getOwner() != null && e.getOwner().getUUID().equals(me)) {
                 taken.add(e.getSlot());
