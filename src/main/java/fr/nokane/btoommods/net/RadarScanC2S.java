@@ -1,10 +1,12 @@
 package fr.nokane.btoommods.net;
 
 import fr.nokane.btoommods.config.ModConfigs;
+import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.radar.RadarCapability;
 import fr.nokane.btoommods.radar.RadarData;
 import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.player.ServerPlayerEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.NetworkEvent;
@@ -14,15 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-/**
- * Radar :
- * ✅ Son joué même si aucune cible trouvée
- * ✅ Glow vert sur le scanneur et sur les joueurs détectés
- * ✅ Les joueurs détectés voient aussi le scanneur en glow
- * ✅ Ne détecte pas les sneaks (sauf s’ils scannent)
- * ✅ Ignore les AFK (inactifs trop longtemps)
- * ✅ Redevient détectable dès mouvement
- */
 public class RadarScanC2S {
 
     public static void encode(RadarScanC2S msg, net.minecraft.network.PacketBuffer buf) {}
@@ -31,6 +24,7 @@ public class RadarScanC2S {
     public static void handle(RadarScanC2S msg, Supplier<NetworkEvent.Context> ctx) {
         NetworkEvent.Context context = ctx.get();
         context.enqueueWork(() -> {
+
             ServerPlayerEntity player = context.getSender();
             if (player == null) return;
 
@@ -44,10 +38,18 @@ public class RadarScanC2S {
                 if (now < data.getCooldownUntil()) return;
                 data.setCooldownUntil(now + ModConfigs.RADAR.RADAR_COOLDOWN_TICKS.get());
 
-                // 📡 Portée
+                // 🛰️ Vérifie nombre réel de radars dans l’inventaire (sécurité)
+                int boosters = player.inventory.items.stream()
+                        .filter(s -> !s.isEmpty() && s.getItem() == ModItems.RADAR_ITEM.get())
+                        .mapToInt(ItemStack::getCount)
+                        .sum();
+
+                // 📡 Rayon de détection
                 int baseRadius = ModConfigs.RADAR.RADAR_BASE_RADIUS.get();
                 int extraPerItem = ModConfigs.RADAR.RADAR_EXTRA_PER_ITEM.get();
-                int radius = baseRadius + data.getBoosters() * extraPerItem;
+
+                // ✅ 1 radar = baseRadius ; chaque radar supplémentaire = +extraPerItem
+                int radius = baseRadius + Math.max(0, boosters - 1) * extraPerItem;
                 double radiusSq = radius * radius;
 
                 int glowTicks = ModConfigs.RADAR.RADAR_GLOW_TICKS.get();
@@ -58,13 +60,14 @@ public class RadarScanC2S {
 
                 List<ServerPlayerEntity> detectedPlayers = new ArrayList<>();
 
-                for (ServerPlayerEntity other : world.getServer().getPlayerList().getPlayers()) {
-                    if (other.level != player.level) continue;
+                // 🔁 Utilise uniquement les joueurs dans le même monde
+                for (ServerPlayerEntity other : world.players()) {
+                    if (other == null || other.isSpectator()) continue;
                     if (player.distanceToSqr(other) > radiusSq) continue;
 
                     boolean isScanner = other == player;
 
-                    // 👀 sneaks non détectés sauf si c’est le scanneur
+                    // 👀 sneaks non détectés sauf si scanneur
                     if (other.isCrouching() && !isScanner) continue;
 
                     // 💤 AFK check
@@ -79,33 +82,32 @@ public class RadarScanC2S {
                     detectedPlayers.add(other);
                 }
 
-                // 🔊 Son joué à chaque scan
+                // 🔊 Son du scan
                 SoundUtils.playWorldSound(world,
                         player.getX(), player.getY(), player.getZ(),
                         fr.nokane.btoommods.sound.ModSounds.SONAR_ITEM.get(),
                         SoundUtils.VOL_SONAR, 1.0F);
 
-                // ✨ Ajoute le scanneur lui-même s’il n’est pas déjà là
-                if (!detectedPlayers.contains(player)) {
-                    detectedPlayers.add(player);
-                }
+                // ✨ Le scanneur se voit toujours lui-même
+                if (!detectedPlayers.contains(player)) detectedPlayers.add(player);
 
-                // ---- 🔰 ENVOI DU GLOW ----
-
-                // 1️⃣ Le scanneur voit toutes les cibles détectées (lui inclus)
+                // 1️⃣ Envoi au scanneur (voit tout)
                 int[] idsForScanner = detectedPlayers.stream()
                         .mapToInt(ServerPlayerEntity::getId)
                         .toArray();
-
                 Net.CH.send(PacketDistributor.PLAYER.with(() -> player),
                         new GlowS2C(glowTicks, idsForScanner, 0x00FF00));
 
-                // 2️⃣ Chaque joueur détecté voit le scanneur en glow
+                // 2️⃣ Envoi aux cibles (voient le scanneur)
                 for (ServerPlayerEntity target : detectedPlayers) {
                     if (target == player) continue;
                     Net.CH.send(PacketDistributor.PLAYER.with(() -> target),
                             new GlowS2C(glowTicks, new int[]{player.getId()}, 0x00FF00));
                 }
+
+                // 🧭 Debug console serveur
+                System.out.printf("[RADAR] %s -> radius=%d, boosters=%d, detected=%d%n",
+                        player.getName().getString(), radius, boosters, detectedPlayers.size());
             });
         });
         context.setPacketHandled(true);

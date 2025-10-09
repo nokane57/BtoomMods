@@ -1,12 +1,34 @@
 {
-  "item.btoommods.cracker_bim": "Cracker Bim",
-  "item.btoommods.blazing_bim": "Blazing Bim",
-  "item.btoommods.timer_bim": "Timer Bim",
-  "item.btoommods.remote_bim": "Remote Bim",
-  "item.btoommods.gas_bim": "Gas Bim",
-  "item.btoommods.gas_bim_disabled": "Gas Bim Disabled",
+  "item.btoommods.cracker_bim": "Cracker BIM",
+  "item.btoommods.blazing_bim": "Blazing BIM",
+  "item.btoommods.timer_bim": "Timer BIM",
+  "item.btoommods.remote_bim": "Remote BIM",
+  "item.btoommods.gas_bim": "Gas BIM",
+  "item.btoommods.gas_bim_disabled": "Gas BIM Disabled",
+
   "key.categories.btoommods": "Btooom Mods",
   "key.btoommods.radar": "Radar (scan)",
   "key.btoommods.remote_bracelet": "Open Remote Bracelet",
-  "key.btoommods.timer_toggle": "Toggle Timer"
+  "key.btoommods.timer_toggle": "Toggle Timer",
+
+  "death.attack.explosion.cracker_bim": "%1$s was blown up by a Cracker BIM.",
+  "death.attack.explosion.cracker_bim.player": "%1$s was blown up by %2$s using a Cracker BIM.",
+  "death.attack.explosion.remote_bim": "%1$s was remotely detonated by a Remote BIM.",
+  "death.attack.explosion.remote_bim.player": "%1$s was remotely blown up by %2$s using a Remote BIM.",
+  "death.attack.explosion.timer_bim": "%1$s failed to beat the Timer BIM countdown.",
+  "death.attack.explosion.timer_bim.player": "%1$s was caught by %2$s’s Timer BIM.",
+  "death.attack.explosion.blazing_bim": "%1$s was turned into barbecue by a Blazing BIM.",
+  "death.attack.explosion.blazing_bim.player": "%1$s was roasted by %2$s with a Blazing BIM.",
+  "death.attack.explosion.gas_bim": "%1$s suffocated in a Gas BIM cloud.",
+  "death.attack.explosion.gas_bim.player": "%1$s was poisoned by %2$s with a Gas BIM.",
+
+  "death.attack.gas_bim": "%1$s suffocated in a Gas BIM cloud.",
+  "death.attack.gas_bim.player": "%1$s was asphyxiated by %2$s with a Gas BIM.",
+  "death.attack_gas_bim": "%1$s was poisoned by the deadly gas of a Gas BIM.",
+
+  "death.attack.timer_bim": "%1$s failed to beat the Timer BIM countdown.",
+  "death.attack.timer_bim.player": "%1$s was caught by %2$s’s Timer BIM.",
+
+  "death.attack.blazing_flame": "%1$s was burned by the flames of a Blazing BIM.",
+  "death.attack.blazing_flame.player": "%1$s was incinerated by %2$s using a Blazing BIM."
 }

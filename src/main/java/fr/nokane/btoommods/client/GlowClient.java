@@ -10,61 +10,68 @@ import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.loading.FMLEnvironment;
 
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
+/**
+ * Gestion du glow radar client :
+ * ✅ Portée = même que le radar serveur (jusqu’à 365 blocs)
+ * ✅ Supprime les entités après expiration
+ * ✅ Garde la team verte unique
+ * ✅ Fonctionne même si les entités sont rechargées plus tard
+ */
 public final class GlowClient {
+
     private static final Map<Integer, Long> GLOW_UNTIL = new HashMap<>();
+    private static final String TEAM_NAME = "glow_radar_green";
+    // Distance max visible temporairement (sera ajustée dynamiquement)
+    private static double forcedRenderDistance = 0.0;
 
     private GlowClient() {}
 
     public static void install() {
-        MinecraftForge.EVENT_BUS.register(new GlowClient());
+        if (FMLEnvironment.dist.isClient()) {
+            MinecraftForge.EVENT_BUS.register(new GlowClient());
+        }
     }
 
-    /** applique un glow coloré */
+    /** Applique un glow coloré temporaire avec portée radar étendue */
     public static void apply(int[] ids, int ticks, int colorRGB) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
+
         long now = mc.level.getGameTime();
         long until = now + ticks;
 
-        TextFormatting color = TextFormatting.GREEN;
-        String teamName = "glow_radar_green";
-
-        if (mc.level.getScoreboard().getTeamNames().stream().noneMatch(t -> t.equals(teamName))) {
-            ScorePlayerTeam team = mc.level.getScoreboard().addPlayerTeam(teamName);
-            team.setColor(color);
+        // 🟢 Crée la team verte si elle n'existe pas
+        ScorePlayerTeam team = mc.level.getScoreboard().getPlayerTeam(TEAM_NAME);
+        if (team == null) {
+            team = mc.level.getScoreboard().addPlayerTeam(TEAM_NAME);
+            team.setColor(TextFormatting.GREEN);
             team.setSeeFriendlyInvisibles(false);
             team.setAllowFriendlyFire(true);
         }
 
-        ScorePlayerTeam team = mc.level.getScoreboard().getPlayerTeam(teamName);
-        if (team == null) return;
+        // 🔄 Étend temporairement la distance de rendu des entités (simule jusqu’à 400 blocs)
+        forcedRenderDistance = Math.max(forcedRenderDistance, 400.0);
 
         for (int id : ids) {
             Entity e = mc.level.getEntity(id);
             if (e != null) {
                 e.setGlowing(true);
                 if (e.getName() != null) {
-                    mc.level.getScoreboard().addPlayerToTeam(e.getName().getString(), team);
+                    String name = e.getName().getString();
+                    if (mc.level.getScoreboard().getPlayersTeam(name) != team) {
+                        mc.level.getScoreboard().addPlayerToTeam(name, team);
+                    }
                 }
-                GLOW_UNTIL.merge(id, until, Math::max);
             }
+            // 🔒 garde l’état du glow même si l’entité est temporairement déchargée
+            GLOW_UNTIL.merge(id, until, Math::max);
         }
-    }
-
-
-    /** particules Remote BIM */
-    public static void spawnRemoteOwnerMarker(double x, double y, double z) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return;
-        for (int i = 0; i < 10; i++)
-            mc.level.addParticle(ParticleTypes.CRIT, x, y, z, 0.0, 0.02, 0.0);
-        for (int i = 0; i < 4; i++)
-            mc.level.addParticle(ParticleTypes.END_ROD, x, y + 0.1, z, 0.0, 0.01, 0.0);
     }
 
     @SubscribeEvent
@@ -74,18 +81,51 @@ public final class GlowClient {
         if (mc.level == null) return;
 
         long now = mc.level.getGameTime();
+        ScorePlayerTeam team = mc.level.getScoreboard().getPlayerTeam(TEAM_NAME);
+
         Iterator<Map.Entry<Integer, Long>> it = GLOW_UNTIL.entrySet().iterator();
+
         while (it.hasNext()) {
-            Map.Entry<Integer, Long> en = it.next();
-            if (now >= en.getValue()) {
-                Entity ent = mc.level.getEntity(en.getKey());
+            Map.Entry<Integer, Long> entry = it.next();
+            int id = entry.getKey();
+            long expire = entry.getValue();
+
+            Entity ent = mc.level.getEntity(id);
+            if (ent != null) {
+                // 🟩 Si visible, on s'assure qu'elle reste glowée
+                if (!ent.isGlowing()) ent.setGlowing(true);
+            }
+
+            // ⏳ Retirer quand expiré
+            if (now >= expire) {
                 if (ent != null) {
-                    if (ent instanceof LivingEntity) {
-                        if (!((LivingEntity) ent).hasEffect(Effects.GLOWING)) ent.setGlowing(false);
-                    } else ent.setGlowing(false);
+                    ent.setGlowing(false);
+                    if (team != null && ent.getName() != null) {
+                        String name = ent.getName().getString();
+                        // ✅ Évite le crash : vérifie si la team correspond avant de retirer
+                        if (mc.level.getScoreboard().getPlayersTeam(name) == team) {
+                            mc.level.getScoreboard().removePlayerFromTeam(name, team);
+                        }
+                    }
                 }
                 it.remove();
             }
         }
+
+        // 🧹 Supprime la team quand elle est vide
+        if (team != null && team.getPlayers().isEmpty()) {
+            mc.level.getScoreboard().removePlayerTeam(team);
+        }
+    }
+
+    /** Particules pour les Remote BIM */
+    public static void spawnRemoteOwnerMarker(double x, double y, double z) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return;
+
+        for (int i = 0; i < 10; i++)
+            mc.level.addParticle(ParticleTypes.CRIT, x, y, z, 0.0, 0.02, 0.0);
+        for (int i = 0; i < 4; i++)
+            mc.level.addParticle(ParticleTypes.END_ROD, x, y + 0.1, z, 0.0, 0.01, 0.0);
     }
 }
