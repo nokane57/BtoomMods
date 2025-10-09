@@ -12,6 +12,9 @@ public class CrackerConfig {
     public final ForgeConfigSpec.DoubleValue EXPLOSION_STRENGTH;
     public final ForgeConfigSpec.DoubleValue RADIUS; // ✅ ajouté
     public final ForgeConfigSpec.BooleanValue BREAK_BLOCK;
+    public final ForgeConfigSpec.DoubleValue DIRECT_HIT_MULTIPLIER;
+    public final ForgeConfigSpec.DoubleValue EPICENTER_DAMAGE;
+
 
     // --- Divers ---
     public final ForgeConfigSpec.IntValue LIFETIME_TICKS;
@@ -48,6 +51,16 @@ public class CrackerConfig {
                 "FR: Si vrai, l'explosion détruit les blocs.",
                 "EN: If true, explosion breaks blocks."
         ).define("break_blocks", true);
+
+        DIRECT_HIT_MULTIPLIER = b.comment(
+                "FR: Multiplicateur de dégâts pour un impact direct du Cracker BIM sur une entité.",
+                "EN: Damage multiplier for direct hit on an entity."
+        ).defineInRange("direct_hit_multiplier", 2.0D, 0.0D, 10.0D);
+
+        EPICENTER_DAMAGE = b.comment(
+                "FR: Dégâts (en cœurs) infligés à l’épicentre de l’explosion du Cracker BIM.",
+                "EN: Damage (in hearts) dealt at the epicenter of the explosion."
+        ).defineInRange("epicenter_damage", 8.0D, 0.0D, 100.0D);
 
         LIFETIME_TICKS = b.comment(
                 "FR: Durée de vie de l'entité projectile avant disparition (ticks).",
