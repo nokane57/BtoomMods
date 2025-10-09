@@ -6,6 +6,7 @@ import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.item.TimerBimItem;
 import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.*;
+import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.ProjectileItemEntity;
 import net.minecraft.item.Item;
@@ -13,14 +14,24 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.network.IPacket;
 import net.minecraft.network.datasync.*;
-import net.minecraft.util.Direction;
-import net.minecraft.util.IndirectEntityDamageSource;
+import net.minecraft.particles.ParticleTypes;
+import net.minecraft.util.*;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.shapes.VoxelShape;
 import net.minecraft.util.math.vector.Vector3d;
+import net.minecraft.world.Explosion;
 import net.minecraft.world.World;
+import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.NetworkHooks;
 
+import java.util.List;
+
+/**
+ * ⏱️ Timer BIM — Bombe à retardement
+ * - Gravité + rebond réalistes
+ * - Explosion configurable (force, rayon, feu, casse de blocs, protection items)
+ * - Interaction manuelle : récupérable au sol
+ */
 public class TimerBimProjectileEntity extends ProjectileItemEntity {
 
     private static final DataParameter<Boolean> DATA_ACTIVE =
@@ -68,13 +79,13 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     public void tick() {
         super.tick();
 
-        // Gravité
+        // Gravité ajustée par le poids
         if (!this.isNoGravity()) {
             Vector3d m = this.getDeltaMovement();
             this.setDeltaMovement(m.x, m.y - ModConfigs.TIMER.POIDS_PROJECTILE.get(), m.z);
         }
 
-        // Correction au sol
+        // Correction de position au sol
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -85,13 +96,13 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             }
         }
 
-        // Gestion du timer (serveur uniquement)
+        // Gestion du compte à rebours serveur
         if (!level.isClientSide && isActive() && getRemainingTicks() > 0) {
             int remaining = getRemainingTicks() - 1;
             this.entityData.set(DATA_REMAINING, remaining);
 
             if (remaining <= 0) {
-                TimerBimItem.explodeAndConsume(level, getX(), getY(), getZ());
+                explodeConfigurable();
                 this.entityData.set(DATA_REMAINING, 0);
                 this.entityData.set(DATA_ACTIVE, false);
                 this.remove();
@@ -99,7 +110,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             }
         }
 
-        // Client : détecte explosion pour HUD
+        // Client : pour le HUD (explosion détectée)
         if (level.isClientSide && !explodedClientSide && getRemainingTicks() <= 0) {
             explodedClientSide = true;
         }
@@ -200,16 +211,11 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             double restitution = ModConfigs.TIMER.RESTITUTION_ENTITY.get();
             Vector3d motion = this.getDeltaMovement();
             Vector3d normal = this.position().subtract(target.position()).normalize();
-
             double dot = motion.dot(normal);
             Vector3d reflected = motion.subtract(normal.scale(2 * dot)).scale(restitution);
-
             this.setDeltaMovement(reflected);
             this.hasImpulse = true;
-
-            // Petit effet de spin visuel
             this.yRot += (this.random.nextFloat() - 0.5f) * 20f;
-
             SoundUtils.playRebound(level, getX(), getY(), getZ());
         }
     }
@@ -231,6 +237,103 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
 
         if (player.addItem(stack)) this.remove();
     }
+
+    // ------------------------------
+    // 🔥 Explosion configurable (serveur)
+    // ------------------------------
+    /** 💥 Explosion entièrement configurable — NE DÉTRUIT PAS LES ITEMS */
+    /** 💥 Explosion entièrement configurable — même logique que Remote & Cracker BIM */
+    private void explodeConfigurable() {
+        if (level.isClientSide || !(level instanceof ServerWorld)) return;
+        ServerWorld sw = (ServerWorld) level;
+
+        BlockPos center = this.blockPosition();
+        double x = getX(), y = getY(), z = getZ();
+
+        double radius = ModConfigs.TIMER.EXPLOSION_RADIUS.get();
+        double blockBreakRadius = ModConfigs.TIMER.BREAK_BLOCK_RADIUS.get();
+        boolean breakBlocks = ModConfigs.TIMER.BREAK_BLOCKS.get();
+        boolean fire = ModConfigs.TIMER.CAUSES_FIRE.get();
+        boolean noItemDestroy = ModConfigs.TIMER.NO_ITEM_DESTROY.get();
+
+        float explosionPower = ModConfigs.TIMER.EXPLOSION_STRENGTH.get().floatValue();
+
+        // 💥 Explosion visuelle uniquement (aucun effet physique Minecraft)
+        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS,
+                0.8F, 0.9F + sw.random.nextFloat() * 0.2F);
+        sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, x, y, z,
+                1, 0.0, 0.0, 0.0, 0.0);
+
+        // ✅ Casse des blocs manuellement (drop les items naturellement)
+        if (breakBlocks) {
+            int blockRadius = (int) Math.ceil(blockBreakRadius);
+            BlockPos.Mutable pos = new BlockPos.Mutable();
+            for (int dx = -blockRadius; dx <= blockRadius; dx++) {
+                for (int dy = -blockRadius; dy <= blockRadius; dy++) {
+                    for (int dz = -blockRadius; dz <= blockRadius; dz++) {
+                        pos.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
+                        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        if (dist <= blockBreakRadius) {
+                            if (!sw.isEmptyBlock(pos) && sw.getBlockState(pos).getExplosionResistance(sw, pos, null) < 200.0F) {
+                                sw.destroyBlock(pos, true); // Drop = true → ne détruit pas les items
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ✅ Dégâts aux entités (ne touche pas les ItemEntity)
+        AxisAlignedBB area = new AxisAlignedBB(
+                x - radius, y - radius, z - radius,
+                x + radius, y + radius, z + radius
+        );
+
+        List<Entity> entities = sw.getEntities(this, area, e -> e.isAlive() && !(e instanceof ItemEntity));
+        LivingEntity ownerLE = (getOwner() instanceof LivingEntity) ? (LivingEntity) getOwner() : null;
+        DamageSource src = DamageSource.explosion(ownerLE);
+
+        for (Entity e : entities) {
+            if (e instanceof LivingEntity) {
+                LivingEntity living = (LivingEntity) e;
+                double d = Math.sqrt(living.distanceToSqr(this));
+                if (d > radius) continue;
+                float dmg = (float) (8.0 * (1.0 - d / radius));
+                living.hurt(src, dmg * 2.0F);
+            }
+        }
+
+        // ✅ Feu optionnel
+        if (fire) {
+            BlockPos.Mutable bp = new BlockPos.Mutable();
+            int fr = (int) Math.ceil(radius / 2);
+            for (int dx = -fr; dx <= fr; dx++) {
+                for (int dz = -fr; dz <= fr; dz++) {
+                    bp.set(center.getX() + dx, center.getY(), center.getZ() + dz);
+                    if (sw.isEmptyBlock(bp) && sw.getBlockState(bp.below()).isSolidRender(sw, bp.below())) {
+                        sw.setBlock(bp, net.minecraft.block.Blocks.FIRE.defaultBlockState(), 11);
+                    }
+                }
+            }
+        }
+
+        // ✅ Empêche tout risque de suppression d’items existants (sécurité)
+        if (noItemDestroy) {
+            List<ItemEntity> items = sw.getEntitiesOfClass(ItemEntity.class, area);
+            for (ItemEntity item : items) {
+                item.setInvulnerable(true);
+                item.setDeltaMovement(item.getDeltaMovement().add(
+                        (item.getX() - x) * 0.02,
+                        0.05,
+                        (item.getZ() - z) * 0.02
+                ));
+            }
+        }
+
+        this.remove();
+    }
+
+
 
     // ------------------------------
     // 🔎 Détection sol

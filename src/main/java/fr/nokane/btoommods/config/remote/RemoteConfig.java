@@ -10,15 +10,18 @@ public class RemoteConfig {
 
     public final ForgeConfigSpec.DoubleValue REMOTE_RADIUS;
     public final ForgeConfigSpec.BooleanValue REMOTE_CAUSES_FIRE;
-
     public final ForgeConfigSpec.BooleanValue BREAK_BLOCKS;
 
-    public final ForgeConfigSpec.IntValue REMOTE_MAX_ACTIVE;           // par joueur
-    public final ForgeConfigSpec.IntValue MAX_REMOTE;                  // total global
-    public final ForgeConfigSpec.IntValue REMOTE_SCAN_RADIUS;          // rayon scan (compte/slot)
-    public final ForgeConfigSpec.IntValue REMOTE_TRIGGER_RADIUS;       // rayon déclenchement
-    public final ForgeConfigSpec.IntValue REMOTE_MARKER_COOLDOWN_TICKS;// cooldown marker (ticks)
+    public final ForgeConfigSpec.IntValue REMOTE_MAX_ACTIVE;
+    public final ForgeConfigSpec.IntValue MAX_REMOTE;
+    public final ForgeConfigSpec.IntValue REMOTE_SCAN_RADIUS;
+    public final ForgeConfigSpec.IntValue REMOTE_TRIGGER_RADIUS;
+    public final ForgeConfigSpec.IntValue REMOTE_MARKER_COOLDOWN_TICKS;
     public final ForgeConfigSpec.IntValue REMOTE_LIFETIME_TICKS;
+
+    // 🆕 Nouveaux paramètres
+    public final ForgeConfigSpec.BooleanValue REMOTE_NO_ITEM_DESTROY;
+    public final ForgeConfigSpec.DoubleValue REMOTE_BREAK_RADIUS;
 
     public RemoteConfig(ForgeConfigSpec.Builder b) {
         b.push("remote_bim");
@@ -81,8 +84,19 @@ public class RemoteConfig {
         REMOTE_LIFETIME_TICKS = b.comment(
                 "FR: Durée de vie (en ticks) d'une Remote BIM avant suppression si elle n'est pas collée.",
                 "EN: Lifetime (in ticks) before a Remote BIM despawns if not stuck."
-        ).defineInRange("remote_lifetime_ticks", 1200, 100, 20 * 60 * 10); // 1 min par défaut
+        ).defineInRange("remote_lifetime_ticks", 1200, 100, 20 * 60 * 10);
 
+        // ✅ Rayon de destruction des blocs
+        REMOTE_BREAK_RADIUS = b.comment(
+                "FR: Rayon maximum pour la casse de blocs (indépendant du rayon de dégâts).",
+                "EN: Maximum block destruction radius (independent from damage radius)."
+        ).defineInRange("break_block_radius", 3.5D, 0.5D, 32.0D);
+
+        // ✅ Protection contre la destruction d’items
+        REMOTE_NO_ITEM_DESTROY = b.comment(
+                "FR: Si vrai, les explosions du Remote BIM ne détruisent jamais les items drop.",
+                "EN: If true, Remote BIM explosions never destroy dropped items."
+        ).define("no_item_destroy", true);
 
         b.pop();
     }

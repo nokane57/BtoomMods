@@ -6,14 +6,17 @@ import fr.nokane.btoommods.net.Net;
 import fr.nokane.btoommods.net.RemoteOwnerMarkerS2C;
 import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.*;
+import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.entity.player.ServerPlayerEntity;
 import net.minecraft.entity.projectile.ProjectileItemEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompoundNBT;
+import net.minecraft.network.IPacket;
 import net.minecraft.network.datasync.DataParameter;
 import net.minecraft.network.datasync.DataSerializers;
 import net.minecraft.network.datasync.EntityDataManager;
+import net.minecraft.particles.ParticleTypes;
 import net.minecraft.util.*;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.vector.Vector3d;
@@ -22,10 +25,7 @@ import net.minecraft.world.World;
 import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.NetworkHooks;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 public class RemoteBimEntity extends ProjectileItemEntity {
 
@@ -79,17 +79,16 @@ public class RemoteBimEntity extends ProjectileItemEntity {
 
         if (tryOwnerSneakPickup()) return;
 
-        // ✅ Gravité dépendant du poids
+        // Gravité selon poids
         if (!isStuck() && !this.isNoGravity()) {
             Vector3d v = this.getDeltaMovement();
             double poids = ModConfigs.REMOTE.POIDS_PROJECTILE.get();
             this.setDeltaMovement(v.x, v.y - (0.04D * poids), v.z);
         }
 
-        // ✅ Vérifie les collisions avec les entités (empêche de traverser)
         if (!isStuck()) checkEntityCollision();
 
-        // ⏳ Suppression après durée de vie (configurable)
+        // Durée de vie
         int lifetime = ModConfigs.REMOTE.REMOTE_LIFETIME_TICKS.get();
         if (!isStuck() && this.tickCount > lifetime) {
             this.remove();
@@ -101,7 +100,6 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             this.noPhysics = true;
             this.setInvisible(true);
 
-            // 🛰️ Envoi périodique de la position au propriétaire
             if (ownerMarkerCooldown-- <= 0) {
                 ownerMarkerCooldown = ModConfigs.REMOTE.REMOTE_MARKER_COOLDOWN_TICKS.get();
                 if (ownerMarkerCooldown <= 0) ownerMarkerCooldown = 20;
@@ -116,8 +114,6 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             return;
         }
 
-        // 💨 Vol libre
-        this.setInvisible(false);
         Vector3d v = this.getDeltaMovement();
         this.setDeltaMovement(v.x * 0.99, v.y, v.z * 0.99);
     }
@@ -126,7 +122,6 @@ public class RemoteBimEntity extends ProjectileItemEntity {
     protected void onHit(RayTraceResult hit) {
         if (level.isClientSide) return;
 
-        // ✅ Colle immédiatement sur la surface d’un bloc
         if (hit.getType() == RayTraceResult.Type.BLOCK) {
             BlockRayTraceResult br = (BlockRayTraceResult) hit;
             Direction face = br.getDirection();
@@ -146,43 +141,68 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         }
     }
 
-    /** ✅ Détection manuelle d'entités proches pour éviter de les traverser */
+    /** Collision manuelle avec entités proches */
     private void checkEntityCollision() {
         Vector3d move = this.getDeltaMovement();
         AxisAlignedBB aabb = this.getBoundingBox().expandTowards(move).inflate(0.3);
-        List<Entity> entities = this.level.getEntities(this, aabb, e ->
-                e.isAlive() && e.isPickable() && e != this.getOwner());
+        List<Entity> entities = this.level.getEntities(this, aabb, e -> e.isAlive() && e.isPickable() && e != this.getOwner());
 
         for (Entity entity : entities) {
             AxisAlignedBB targetBox = entity.getBoundingBox().inflate(0.2);
             if (targetBox.intersects(aabb)) {
-                // 💥 Impact détecté → s’arrête net
                 Vector3d hitPos = entity.position().add(0, entity.getBbHeight() / 2.0, 0);
                 this.setPos(hitPos.x, hitPos.y, hitPos.z);
-
-                // Stop horizontalement, conserve la gravité
                 Vector3d vel = this.getDeltaMovement();
                 this.setDeltaMovement(0, Math.min(vel.y, 0.0), 0);
-
                 SoundUtils.playRebound(level, getX(), getY(), getZ());
                 return;
             }
         }
     }
 
+    /** 💥 Explosion sans jamais détruire les items */
     public void detonateNow() {
         if (this.removed || !(level instanceof ServerWorld)) return;
-
         ServerWorld sw = (ServerWorld) level;
         BlockPos center = this.blockPosition();
 
         double radius = ModConfigs.REMOTE.REMOTE_RADIUS.get();
         boolean breakBlocks = ModConfigs.REMOTE.BREAK_BLOCKS.get();
         boolean fire = ModConfigs.REMOTE.REMOTE_CAUSES_FIRE.get();
+        boolean noItemDestroy = ModConfigs.REMOTE.REMOTE_NO_ITEM_DESTROY.get();
+        double blockBreakRadius = ModConfigs.REMOTE.REMOTE_BREAK_RADIUS.get();
 
         float explosionPower = (float) Math.min(8.0, radius / 2.0);
-        Explosion.Mode mode = breakBlocks ? Explosion.Mode.BREAK : Explosion.Mode.NONE;
 
+        // Effet visuel + son
+        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS,
+                0.7F, 0.9F + sw.random.nextFloat() * 0.2F);
+        sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, getX(), getY(), getZ(),
+                1, 0.0, 0.0, 0.0, 0.0);
+
+        // ✅ Casse les blocs manuellement si activé
+        if (breakBlocks) {
+            int blockRadius = (int) Math.ceil(blockBreakRadius);
+            BlockPos.Mutable pos = new BlockPos.Mutable();
+            for (int x = -blockRadius; x <= blockRadius; x++) {
+                for (int y = -blockRadius; y <= blockRadius; y++) {
+                    for (int z = -blockRadius; z <= blockRadius; z++) {
+                        pos.set(center.getX() + x, center.getY() + y, center.getZ() + z);
+                        double dist = Math.sqrt(x * x + y * y + z * z);
+                        if (dist <= blockBreakRadius) {
+                            if (!sw.isEmptyBlock(pos)
+                                    && sw.getBlockState(pos).getExplosionResistance(sw, pos, null) < 200.0F) {
+
+                                // 💡 Drop les items, jamais détruits
+                                sw.destroyBlock(pos, true);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ✅ Dégâts manuels (seulement vivants)
         AxisAlignedBB area = new AxisAlignedBB(
                 getX() - radius, getY() - radius, getZ() - radius,
                 getX() + radius, getY() + radius, getZ() + radius
@@ -191,21 +211,22 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         LivingEntity ownerLE = (getOwner() instanceof LivingEntity) ? (LivingEntity) getOwner() : null;
         DamageSource src = DamageSource.explosion(ownerLE);
 
-        // 💥 Dégâts progressifs
-        for (LivingEntity e : sw.getEntitiesOfClass(LivingEntity.class, area, LivingEntity::isAlive)) {
-            double d = Math.sqrt(e.distanceToSqr(this));
-            if (d > radius) continue;
-            float dmg = (float) (8.0 * (1.0 - d / radius));
-            e.hurt(src, dmg * 2.0F);
+        List<Entity> entities = sw.getEntities(this, area, e ->
+                e.isAlive() && (!(e instanceof ItemEntity) || !noItemDestroy));
+
+        for (Entity e : entities) {
+            if (e instanceof LivingEntity) {
+                LivingEntity living = (LivingEntity) e;
+                double d = Math.sqrt(living.distanceToSqr(this));
+                if (d > radius) continue;
+                float dmg = (float) (8.0 * (1.0 - d / radius));
+                living.hurt(src, dmg * 2.0F);
+            }
         }
 
-        // 🎯 Explosion
-        sw.explode(this, getX(), getY(), getZ(), explosionPower, fire, mode);
-        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS,
-                1.0F, 0.9F + sw.random.nextFloat() * 0.2F);
-
-        // 🔊 Son PI pour le joueur le plus proche
-        ServerPlayerEntity nearest = (ServerPlayerEntity) sw.getNearestPlayer(getX(), getY(), getZ(), radius * 2, false);
+        // 🔊 Bip sonore pour le joueur proche
+        ServerPlayerEntity nearest = (ServerPlayerEntity)
+                sw.getNearestPlayer(getX(), getY(), getZ(), radius * 2, false);
         if (nearest != null) {
             SoundUtils.playWorldSound(sw, nearest.getX(), nearest.getY(), nearest.getZ(),
                     fr.nokane.btoommods.sound.ModSounds.PI_ITEM.get(), 1.3F, 1.0F);
@@ -214,14 +235,17 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         this.remove();
     }
 
+    /** 🔢 Assigne automatiquement un slot libre (1-8) */
     public void assignSlotAuto() {
         if (!(level instanceof ServerWorld)) { setSlot(1); return; }
         UUID me = (getOwner() != null ? getOwner().getUUID() : new UUID(0, 0));
         ServerWorld sw = (ServerWorld) level;
 
         int scan = ModConfigs.REMOTE.REMOTE_SCAN_RADIUS.get();
-        AxisAlignedBB box = new AxisAlignedBB(getX() - scan, getY() - scan, getZ() - scan,
-                getX() + scan, getY() + scan, getZ() + scan);
+        AxisAlignedBB box = new AxisAlignedBB(
+                getX() - scan, getY() - scan, getZ() - scan,
+                getX() + scan, getY() + scan, getZ() + scan
+        );
 
         Set<Integer> taken = new HashSet<>();
         for (RemoteBimEntity e : sw.getEntitiesOfClass(RemoteBimEntity.class, box)) {
@@ -266,7 +290,7 @@ public class RemoteBimEntity extends ProjectileItemEntity {
     }
 
     @Override
-    public net.minecraft.network.IPacket<?> getAddEntityPacket() {
+    public IPacket<?> getAddEntityPacket() {
         return NetworkHooks.getEntitySpawningPacket(this);
     }
 }

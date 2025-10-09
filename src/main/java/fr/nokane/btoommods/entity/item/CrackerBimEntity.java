@@ -2,28 +2,32 @@ package fr.nokane.btoommods.entity.item;
 
 import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
-import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.*;
+import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.entity.projectile.ProjectileItemEntity;
 import net.minecraft.item.Item;
 import net.minecraft.network.IPacket;
+import net.minecraft.particles.ParticleTypes;
 import net.minecraft.util.DamageSource;
 import net.minecraft.util.Direction;
+import net.minecraft.util.SoundCategory;
+import net.minecraft.util.SoundEvents;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.shapes.VoxelShape;
 import net.minecraft.util.math.vector.Vector3d;
-import net.minecraft.world.Explosion;
 import net.minecraft.world.World;
+import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.NetworkHooks;
 
 import java.util.List;
 
 /**
  * 💣 Cracker BIM — Projectile explosif :
- * - Subit la gravité
- * - Explosion immédiate à l’impact
+ * - Explosion instantanée à l’impact
  * - Dégâts directs + dégâts d’épicentre configurables
- * - Dégâts de zone atténués selon la distance
+ * - Dégâts de zone atténués
+ * - Casse les blocs (optionnel)
+ * - Ne détruit jamais les items si configuré
  */
 public class CrackerBimEntity extends ProjectileItemEntity {
 
@@ -64,7 +68,7 @@ public class CrackerBimEntity extends ProjectileItemEntity {
             }
         }
 
-        // Sécurité : auto-suppression après un certain temps
+        // Suppression après un certain temps
         if (!level.isClientSide && this.tickCount > ModConfigs.CRACKER.LIFETIME_TICKS.get()) {
             explode();
             this.remove();
@@ -75,7 +79,6 @@ public class CrackerBimEntity extends ProjectileItemEntity {
     protected void onHit(RayTraceResult hit) {
         if (level.isClientSide || hasExploded) return;
         hasExploded = true;
-
         explode();
         this.remove();
     }
@@ -84,31 +87,27 @@ public class CrackerBimEntity extends ProjectileItemEntity {
     protected void onHitEntity(EntityRayTraceResult hit) {
         if (level.isClientSide || hasExploded) return;
         hasExploded = true;
-
-        // 💥 Explosion centrée sur l'impact
         explode();
 
-        // 💢 Dégâts directs boostés (configurable)
+        // 💢 Dégâts directs boostés
         Entity target = hit.getEntity();
-        if (target.isAlive()) {
+        if (target.isAlive() && target instanceof LivingEntity) {
             double mult = ModConfigs.CRACKER.DIRECT_HIT_MULTIPLIER.get();
             float baseDmg = ModConfigs.CRACKER.EXPLOSION_STRENGTH.get().floatValue() * 2.0F;
             float impactDmg = (float) (baseDmg * mult);
 
             DamageSource dmgSource = new DamageSource("explosion.cracker_bim")
-                    .setExplosion()
-                    .setProjectile();
-
+                    .setExplosion().setProjectile();
             target.hurt(dmgSource, impactDmg);
         }
-
         this.remove();
     }
 
-    /** 💥 Explosion propre + dégâts de zone progressifs */
+    /** 💥 Explosion avec options configurables */
     private void explode() {
-        if (level.isClientSide) return;
+        if (level.isClientSide || !(level instanceof ServerWorld)) return;
 
+        ServerWorld sw = (ServerWorld) level;
         double x = this.getX();
         double y = this.getY();
         double z = this.getZ();
@@ -117,39 +116,54 @@ public class CrackerBimEntity extends ProjectileItemEntity {
         double radius = ModConfigs.CRACKER.RADIUS.get();
         boolean breakBlocks = ModConfigs.CRACKER.BREAK_BLOCK.get();
         double epicenterHearts = ModConfigs.CRACKER.EPICENTER_DAMAGE.get();
+        boolean noItemDestroy = ModConfigs.CRACKER.NO_ITEM_DESTROY.get();
+        double blockBreakRadius = ModConfigs.CRACKER.BREAK_BLOCK_RADIUS.get();
 
-        // Explosion visuelle et sonore
-        level.explode(
-                this.getOwner(),
-                x, y, z,
-                strength,
-                false,
-                breakBlocks ? Explosion.Mode.BREAK : Explosion.Mode.NONE
-        );
+        // 💥 Explosion visuelle + son
+        sw.playSound(null, x, y, z, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS,
+                0.7F, 0.9F + sw.random.nextFloat() * 0.2F);
+        sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, x, y, z, 1, 0.0, 0.0, 0.0, 0.0);
 
-        // 🧨 Dégâts de zone progressifs
-        AxisAlignedBB area = new AxisAlignedBB(
-                x - radius, y - radius, z - radius,
-                x + radius, y + radius, z + radius
-        );
+        // ✅ Casse les blocs manuellement si activé
+        if (breakBlocks) {
+            int blockRadius = (int) Math.ceil(blockBreakRadius);
+            BlockPos.Mutable pos = new BlockPos.Mutable();
+            BlockPos center = this.blockPosition();
 
-        List<LivingEntity> nearby = level.getEntitiesOfClass(LivingEntity.class, area);
-        for (LivingEntity e : nearby) {
-            double distSqr = this.distanceToSqr(e);
-            if (distSqr <= radius * radius) {
-                double dist = Math.sqrt(distSqr);
-                double factor = 1.0 - (dist / radius); // Diminution linéaire
-                factor = Math.max(0.0, factor);
-
-                // 💥 Dégâts à l’épicentre (1 cœur = 2 HP)
-                float maxDamage = (float) (epicenterHearts * 2.0);
-                float damage = (float) (maxDamage * factor);
-
-                DamageSource src = new DamageSource("explosion.cracker_bim").setExplosion();
-                e.hurt(src, damage);
+            for (int dx = -blockRadius; dx <= blockRadius; dx++) {
+                for (int dy = -blockRadius; dy <= blockRadius; dy++) {
+                    for (int dz = -blockRadius; dz <= blockRadius; dz++) {
+                        pos.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
+                        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        if (dist <= blockBreakRadius && !sw.isEmptyBlock(pos)) {
+                            if (sw.getBlockState(pos).getExplosionResistance(sw, pos, null) < 200.0F) {
+                                sw.destroyBlock(pos, true); // drop les items
+                            }
+                        }
+                    }
+                }
             }
         }
 
+        // 🧨 Dégâts de zone (ignore les items si configuré)
+        AxisAlignedBB area = new AxisAlignedBB(x - radius, y - radius, z - radius,
+                x + radius, y + radius, z + radius);
+        List<Entity> nearby = sw.getEntities(this, area,
+                e -> e.isAlive() && (!(e instanceof ItemEntity) || !noItemDestroy));
+
+        for (Entity e : nearby) {
+            if (e instanceof LivingEntity) {
+                LivingEntity le = (LivingEntity) e;
+                double distSqr = this.distanceToSqr(le);
+                if (distSqr <= radius * radius) {
+                    double dist = Math.sqrt(distSqr);
+                    double factor = Math.max(0.0, 1.0 - (dist / radius));
+                    float maxDamage = (float) (epicenterHearts * 2.0);
+                    float damage = (float) (maxDamage * factor);
+                    le.hurt(new DamageSource("explosion.cracker_bim").setExplosion(), damage);
+                }
+            }
+        }
     }
 
     @Override

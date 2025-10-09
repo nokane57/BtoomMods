@@ -4,16 +4,21 @@ import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.item.TimerBimProjectileEntity;
 import fr.nokane.btoommods.net.Net;
 import fr.nokane.btoommods.net.TimerItemSyncS2C;
-import net.minecraft.entity.Entity;
+import net.minecraft.entity.*;
 import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.*;
 import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
+import net.minecraft.particles.ParticleTypes;
+import net.minecraft.util.*;
+import net.minecraft.util.math.*;
+import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.Explosion;
 import net.minecraft.world.World;
+import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.PacketDistributor;
+
+import java.util.List;
 
 public class TimerBimItem extends Item {
 
@@ -21,7 +26,9 @@ public class TimerBimItem extends Item {
     public static final String NBT_HAS_STARTED = "HasStarted";
     public static final String NBT_REMAINING = "RemainingTicks";
 
-    public TimerBimItem(Properties props) { super(props); }
+    public TimerBimItem(Properties props) {
+        super(props);
+    }
 
     public static int getMaxSeconds() { return ModConfigs.TIMER.DEFAULT_SECONDS.get(); }
     public static int getMaxTicks()   { return getMaxSeconds() * 20; }
@@ -37,7 +44,7 @@ public class TimerBimItem extends Item {
     }
 
     @Override
-    public void releaseUsing(ItemStack stack, World world, net.minecraft.entity.LivingEntity living, int timeLeft) {
+    public void releaseUsing(ItemStack stack, World world, LivingEntity living, int timeLeft) {
         if (world.isClientSide || !(living instanceof PlayerEntity)) return;
 
         PlayerEntity player = (PlayerEntity) living;
@@ -107,46 +114,37 @@ public class TimerBimItem extends Item {
 
         // 💥 Explosion quand fini
         if (remaining <= 0) {
-            // 🔁 Synchro finale: 0 tick restant -> le client purge et masque le HUD immédiatement
             if (!world.isClientSide) {
+                // Synchro HUD 0
                 if (entityToRemove != null) {
-                    Net.CH.send(
-                            PacketDistributor.TRACKING_ENTITY.with(() -> entityToRemove),
-                            new TimerItemSyncS2C(entityToRemove.getId(), 0)
-                    );
+                    Net.CH.send(PacketDistributor.TRACKING_ENTITY.with(() -> entityToRemove),
+                            new TimerItemSyncS2C(entityToRemove.getId(), 0));
                 } else if (holder instanceof PlayerEntity) {
-                    PlayerEntity player = (PlayerEntity) holder;
-                    Net.CH.send(
-                            PacketDistributor.PLAYER.with(() -> (net.minecraft.entity.player.ServerPlayerEntity) player),
-                            new TimerItemSyncS2C(-1, 0)
-                    );
+                    PlayerEntity p = (PlayerEntity) holder;
+                    Net.CH.send(PacketDistributor.PLAYER.with(() -> (net.minecraft.entity.player.ServerPlayerEntity)p),
+                            new TimerItemSyncS2C(-1, 0));
                 }
-            }
 
-            explodeAndConsume(world, x, y, z);
-            if (shrinkOnExplode) {
-                if (stack.getCount() > 0) stack.shrink(1);
-            } else if (entityToRemove != null && !world.isClientSide) {
-                entityToRemove.remove();
+                // Explosion finale
+                safeExplosion(world, x, y, z);
+
+                if (shrinkOnExplode && stack.getCount() > 0) stack.shrink(1);
+                else if (entityToRemove != null) entityToRemove.remove();
             }
             return true;
         }
 
-        // 🔁 Synchronisation toutes les secondes
-        int secBefore = (int) Math.ceil(before / 20.0);
-        int secNow = (int) Math.ceil(remaining / 20.0);
+        // 🔁 Synchro chaque seconde
+        int secBefore = (int)Math.ceil(before / 20.0);
+        int secNow = (int)Math.ceil(remaining / 20.0);
         if (!world.isClientSide && secNow != secBefore) {
             if (entityToRemove != null) {
-                Net.CH.send(
-                        PacketDistributor.TRACKING_ENTITY.with(() -> entityToRemove),
-                        new TimerItemSyncS2C(entityToRemove.getId(), remaining)
-                );
+                Net.CH.send(PacketDistributor.TRACKING_ENTITY.with(() -> entityToRemove),
+                        new TimerItemSyncS2C(entityToRemove.getId(), remaining));
             } else if (holder instanceof PlayerEntity) {
-                PlayerEntity player = (PlayerEntity) holder;
-                Net.CH.send(
-                        PacketDistributor.PLAYER.with(() -> (net.minecraft.entity.player.ServerPlayerEntity) player),
-                        new TimerItemSyncS2C(-1, remaining)
-                );
+                PlayerEntity p = (PlayerEntity) holder;
+                Net.CH.send(PacketDistributor.PLAYER.with(() -> (net.minecraft.entity.player.ServerPlayerEntity)p),
+                        new TimerItemSyncS2C(-1, remaining));
             }
         }
 
@@ -173,12 +171,79 @@ public class TimerBimItem extends Item {
         tag.putInt(NBT_REMAINING, Math.max(0, remaining));
     }
 
-    public static void explodeAndConsume(World world, double x, double y, double z) {
-        world.explode(null, x, y, z,
-                ModConfigs.TIMER.EXPLOSION_STRENGTH.get().floatValue(),
-                ModConfigs.TIMER.CAUSES_FIRE.get(),
-                ModConfigs.TIMER.BREAK_BLOCKS.get()
-                        ? Explosion.Mode.BREAK
-                        : Explosion.Mode.NONE);
+    // ==========================================================
+    // 💥 Explosion sécurisée (ne détruit jamais les items)
+    // ==========================================================
+    public static void safeExplosion(World world, double x, double y, double z) {
+        if (!(world instanceof ServerWorld)) return;
+        ServerWorld sw = (ServerWorld) world;
+
+        boolean breakBlocks = ModConfigs.TIMER.BREAK_BLOCKS.get();
+        boolean fire = ModConfigs.TIMER.CAUSES_FIRE.get();
+        boolean noItemDestroy = ModConfigs.TIMER.NO_ITEM_DESTROY.get();
+        double blockRadius = ModConfigs.TIMER.BREAK_BLOCK_RADIUS.get();
+        double radius = ModConfigs.TIMER.EXPLOSION_RADIUS.get();
+        float power = ModConfigs.TIMER.EXPLOSION_STRENGTH.get().floatValue();
+
+        BlockPos center = new BlockPos(x, y, z);
+
+        // 💥 Effet visuel
+        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 0.8F, 1.0F);
+        sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, x, y, z, 1, 0, 0, 0, 0);
+
+        // 🧱 Casse manuelle des blocs
+        if (breakBlocks) {
+            int r = (int) Math.ceil(blockRadius);
+            BlockPos.Mutable pos = new BlockPos.Mutable();
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dy = -r; dy <= r; dy++) {
+                    for (int dz = -r; dz <= r; dz++) {
+                        pos.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
+                        double dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                        if (dist <= blockRadius && !sw.isEmptyBlock(pos)) {
+                            sw.destroyBlock(pos, true);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 💀 Dégâts entités (ignore ItemEntity)
+        AxisAlignedBB area = new AxisAlignedBB(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius);
+        List<Entity> entities = sw.getEntities((Entity) null, area, e -> e.isAlive() && !(e instanceof ItemEntity));
+        for (Entity e : entities) {
+            if (e instanceof LivingEntity) {
+                LivingEntity le = (LivingEntity)e;
+                double dist = Math.sqrt(le.distanceToSqr(x, y, z));
+                if (dist <= radius) {
+                    float dmg = (float)(8.0 * (1.0 - dist / radius));
+                    le.hurt(DamageSource.explosion((Explosion) null), dmg * 2.0F);
+                }
+            }
+        }
+
+        // 🔥 Feu optionnel
+        if (fire) {
+            BlockPos.Mutable bp = new BlockPos.Mutable();
+            int fr = (int)Math.ceil(radius / 2);
+            for (int dx = -fr; dx <= fr; dx++) {
+                for (int dz = -fr; dz <= fr; dz++) {
+                    bp.set(center.getX() + dx, center.getY(), center.getZ() + dz);
+                    if (sw.isEmptyBlock(bp) && sw.getBlockState(bp.below()).isSolidRender(sw, bp.below())) {
+                        sw.setBlock(bp, net.minecraft.block.Blocks.FIRE.defaultBlockState(), 11);
+                    }
+                }
+            }
+        }
+
+        // 🪙 Protection des items drop
+        if (noItemDestroy) {
+            List<ItemEntity> items = sw.getEntitiesOfClass(ItemEntity.class, area);
+            for (ItemEntity it : items) {
+                it.setInvulnerable(true);
+                Vector3d dir = it.position().subtract(x, y, z).normalize().scale(0.25);
+                it.setDeltaMovement(it.getDeltaMovement().add(dir));
+            }
+        }
     }
 }
