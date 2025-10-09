@@ -85,7 +85,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             }
         }
 
-        // Gestion du timer
+        // Gestion du timer (serveur uniquement)
         if (!level.isClientSide && isActive() && getRemainingTicks() > 0) {
             int remaining = getRemainingTicks() - 1;
             this.entityData.set(DATA_REMAINING, remaining);
@@ -99,7 +99,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             }
         }
 
-        // Client : détecte explosion pour le HUD
+        // Client : détecte explosion pour HUD
         if (level.isClientSide && !explodedClientSide && getRemainingTicks() <= 0) {
             explodedClientSide = true;
         }
@@ -111,6 +111,9 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         return explodedClientSide || getRemainingTicks() <= 0 || !isAlive();
     }
 
+    // ------------------------------
+    // 🧱 Gestion des collisions blocs
+    // ------------------------------
     @Override
     protected void onHit(RayTraceResult hit) {
         if (hit.getType() == RayTraceResult.Type.ENTITY) {
@@ -127,10 +130,10 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         Vector3d v = this.getDeltaMovement();
         double restitutionGround = ModConfigs.TIMER.RESTITUTION_GROUND.get();
         double frictionGround = ModConfigs.TIMER.FRICTION_GROUND.get();
-        double restitutionWall = 0.45;
-        double frictionWall = 0.75;
-        double maxBounceUp = 0.3;
-        double stopEps = 0.04;
+        double restitutionWall = ModConfigs.TIMER.RESTITUTION_WALL.get();
+        double frictionWall = ModConfigs.TIMER.FRICTION_WALL.get();
+        double maxBounceUp = ModConfigs.TIMER.MAX_BOUNCE_UP.get();
+        double stopEps = ModConfigs.TIMER.STOP_EPS.get();
         double popSpeedGate = 0.25;
         double wallVerticalPop = 0.05;
 
@@ -180,16 +183,40 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         }
     }
 
+    // ------------------------------
+    // 💥 Collision avec entités vivantes
+    // ------------------------------
     @Override
     protected void onHitEntity(EntityRayTraceResult hit) {
         Entity target = hit.getEntity();
-        if (!level.isClientSide && target instanceof LivingEntity) {
-            float dmg = (float) (ModConfigs.TIMER.IMPACT_HEARTS.get() * 2.0);
-            target.hurt(new IndirectEntityDamageSource("timer_bim", this, this.getOwner()).setProjectile(), dmg);
+
+        if (!level.isClientSide) {
+            if (target instanceof LivingEntity) {
+                float dmg = (float) (ModConfigs.TIMER.IMPACT_HEARTS.get() * 2.0);
+                target.hurt(new IndirectEntityDamageSource("timer_bim", this, this.getOwner()).setProjectile(), dmg);
+            }
+
+            // Rebond physique configurable
+            double restitution = ModConfigs.TIMER.RESTITUTION_ENTITY.get();
+            Vector3d motion = this.getDeltaMovement();
+            Vector3d normal = this.position().subtract(target.position()).normalize();
+
+            double dot = motion.dot(normal);
+            Vector3d reflected = motion.subtract(normal.scale(2 * dot)).scale(restitution);
+
+            this.setDeltaMovement(reflected);
+            this.hasImpulse = true;
+
+            // Petit effet de spin visuel
+            this.yRot += (this.random.nextFloat() - 0.5f) * 20f;
+
             SoundUtils.playRebound(level, getX(), getY(), getZ());
         }
     }
 
+    // ------------------------------
+    // 🧍 Interaction joueur
+    // ------------------------------
     @Override
     public void playerTouch(PlayerEntity player) {
         if (level.isClientSide) return;
@@ -205,6 +232,9 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         if (player.addItem(stack)) this.remove();
     }
 
+    // ------------------------------
+    // 🔎 Détection sol
+    // ------------------------------
     private boolean isGrounded() {
         long now = level.getGameTime();
         if (now - lastGroundHitTime <= 2) return true;
@@ -216,6 +246,9 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         return nearSurface && slowY;
     }
 
+    // ------------------------------
+    // 📦 Getters
+    // ------------------------------
     public boolean isActive() { return this.entityData.get(DATA_ACTIVE); }
     public boolean hasStarted() { return this.entityData.get(DATA_STARTED); }
     public int getRemainingTicks() { return this.entityData.get(DATA_REMAINING); }

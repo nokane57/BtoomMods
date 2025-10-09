@@ -19,6 +19,7 @@ public class TimerConfig {
     public final ForgeConfigSpec.DoubleValue FRICTION_GROUND;
     public final ForgeConfigSpec.DoubleValue RESTITUTION_WALL;
     public final ForgeConfigSpec.DoubleValue FRICTION_WALL;
+    public final ForgeConfigSpec.DoubleValue RESTITUTION_ENTITY;
     public final ForgeConfigSpec.DoubleValue MAX_BOUNCE_UP;
     public final ForgeConfigSpec.DoubleValue STOP_EPS;
 
@@ -65,6 +66,9 @@ public class TimerConfig {
 
         FRICTION_WALL = b.comment("Friction contre les murs.")
                 .defineInRange("friction_wall", 0.65D, 0.0D, 1.0D);
+
+        RESTITUTION_ENTITY = b.comment("Rebond contre les entités vivantes (0 = aucun rebond, 1 = rebond parfait).")
+                .defineInRange("restitution_entity", 0.4D, 0.0D, 1.0D);
 
         MAX_BOUNCE_UP = b.comment("Hauteur maximale du rebond vertical.")
                 .defineInRange("max_bounce_up", 0.12D, 0.0D, 1.0D);

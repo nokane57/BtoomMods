@@ -69,7 +69,13 @@ public class ModItems {
 
     // Timer BIM
     public static final RegistryObject<Item> TIMER_BIM = ITEMS.register("timer_bim",
-            () -> new TimerBimItem(new Item.Properties().tab(ItemGroup.TAB_COMBAT)));
+            () -> new TimerBimItem(new Item.Properties().tab(ItemGroup.TAB_COMBAT)) {
+                @Override
+                public int getItemStackLimit(ItemStack stack) {
+                    // Lecture dynamique depuis la config Forge
+                    return Math.max(1, Math.min(ModConfigs.TIMER.STACK.get(), 64));
+                }
+            });
 
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);
