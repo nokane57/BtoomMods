@@ -8,11 +8,12 @@ import net.minecraft.entity.projectile.ProjectileItemEntity;
 import net.minecraft.item.Item;
 import net.minecraft.network.IPacket;
 import net.minecraft.util.Direction;
+import net.minecraft.util.SoundCategory;
+import net.minecraft.util.SoundEvents;
 import net.minecraft.util.math.*;
 import net.minecraft.util.math.shapes.VoxelShape;
 import net.minecraft.util.math.vector.Vector3d;
 import net.minecraft.world.World;
-import net.minecraft.world.gen.Heightmap;
 import net.minecraftforge.fml.network.NetworkHooks;
 
 /**
@@ -43,14 +44,14 @@ public class BlazingBimEntity extends ProjectileItemEntity {
     public void tick() {
         super.tick();
 
-        // Appliquer la gravité avec coefficient de poids
+        // Gravité selon poids
         if (!this.isNoGravity()) {
             Vector3d vel = this.getDeltaMovement();
             double poids = ModConfigs.BLAZING.POIDS_PROJECTILE.get();
             this.setDeltaMovement(vel.x, vel.y - (0.04D * poids), vel.z);
         }
 
-        // Correction de position si au sol (évite enfoncement visuel)
+        // Correction d'enfoncement
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -60,7 +61,7 @@ public class BlazingBimEntity extends ProjectileItemEntity {
             }
         }
 
-        // Sécurité : si bug ou durée trop longue, auto-suppression
+        // Auto-suppression de sécurité
         if (!level.isClientSide && this.tickCount > 200) {
             spawnFireField();
             this.remove();
@@ -69,54 +70,49 @@ public class BlazingBimEntity extends ProjectileItemEntity {
 
     @Override
     protected void onHit(RayTraceResult hit) {
-        super.onHit(hit);
-
         if (level.isClientSide || hasImpacted) return;
         hasImpacted = true;
-
         spawnFireField();
         this.remove();
     }
 
     @Override
     protected void onHitEntity(EntityRayTraceResult hit) {
-        super.onHitEntity(hit);
-
         if (level.isClientSide || hasImpacted) return;
         hasImpacted = true;
-
         spawnFireField();
         this.remove();
     }
 
-    /** 🔥 Génère le champ de feu au point d’impact et joue le son */
+    /** 🔥 Crée le champ de feu au point d’impact sans remonter à la surface */
     private void spawnFireField() {
         if (level.isClientSide) return;
 
-        BlockPos pos = this.blockPosition();
-        int y = level.getHeight(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, pos.getX(), pos.getZ());
-        BlockPos center = new BlockPos(pos.getX(), y, pos.getZ());
+        BlockPos impact = this.blockPosition();
 
         fr.nokane.btoommods.entity.misc.BlazingFireFieldEntity field =
                 ModEntities.BLAZING_FIRE_FIELD.get().create(level);
 
         if (field != null) {
-            field.setPos(center.getX() + 0.5, center.getY(), center.getZ() + 0.5);
+            field.setPos(impact.getX() + 0.5, impact.getY(), impact.getZ() + 0.5);
             level.addFreshEntity(field);
 
-            // 🔊 joue le son "fire" au moment exact où le champ est créé
+            // 🔊 Explosion douce
+            level.playSound(null, impact, SoundEvents.GENERIC_EXPLODE,
+                    SoundCategory.BLOCKS, 0.4F, 1.0F);
+
+            // 🔥 Son d’activation du feu
             fr.nokane.btoommods.sound.SoundUtils.playWorldSound(
                     level,
-                    center.getX() + 0.5,
-                    center.getY(),
-                    center.getZ() + 0.5,
+                    impact.getX() + 0.5,
+                    impact.getY(),
+                    impact.getZ() + 0.5,
                     fr.nokane.btoommods.sound.ModSounds.FIRE_ITEM.get(),
-                    fr.nokane.btoommods.sound.SoundUtils.VOL_WORLD,
+                    0.6F,
                     1.0F
             );
         }
     }
-
 
     @Override
     public IPacket<?> getAddEntityPacket() {

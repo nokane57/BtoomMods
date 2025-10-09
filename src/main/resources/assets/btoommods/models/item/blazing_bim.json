@@ -17,11 +17,11 @@
     },
 
     "thirdperson_righthand": {
-      "scale": [0.009, 0.009, 0.009],
+      "scale": [0.02, 0.02, 0.02],
       "rotation": [0, 180, 0]
     },
     "thirdperson_lefthand": {
-      "scale": [0.009, 0.009, 0.009],
+      "scale": [0.02, 0.02, 0.02],
       "rotation": [0, 180, 0]
     },
     "firstperson_righthand": {
