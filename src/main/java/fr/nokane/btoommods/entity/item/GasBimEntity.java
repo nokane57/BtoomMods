@@ -19,13 +19,14 @@ import net.minecraftforge.fml.network.NetworkHooks;
 /**
  * Projectile du Gaz BIM :
  * - Poids et rebonds identiques au Timer BIM
- * - Crée un nuage de gaz au sol après un délai
+ * - Crée un nuage de gaz au sol ou automatiquement après 3s
  */
 public class GasBimEntity extends ProjectileItemEntity {
 
     private static final double GROUND_EPS = 0.02;
     private long lastGroundHitTime = -1;
     private int ticksSinceLaunch = 0;
+    private int fuseTicks = 60; // 💥 Explosion auto après 3 secondes (60 ticks)
 
     public GasBimEntity(EntityType<? extends GasBimEntity> type, World world) {
         super(type, world);
@@ -45,13 +46,13 @@ public class GasBimEntity extends ProjectileItemEntity {
         super.tick();
         ticksSinceLaunch++;
 
-        // Gravité identique au Timer BIM
+        // Gravité
         if (!this.isNoGravity()) {
             Vector3d m = this.getDeltaMovement();
             this.setDeltaMovement(m.x, m.y - ModConfigs.GAS.POIDS_PROJECTILE.get() * 0.04D, m.z);
         }
 
-        // Anti-enfoncement dans le sol
+        // Anti-enfoncement
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -62,8 +63,20 @@ public class GasBimEntity extends ProjectileItemEntity {
             }
         }
 
-        // Explosion du gaz après délai
-        if (!level.isClientSide && ticksSinceLaunch >= ModConfigs.GAS.GAS_EXPLODE_AFTER_TICKS.get() && isGrounded()) {
+        if (level.isClientSide) return;
+
+        // 💣 Explosion automatique après le fuse, même sans toucher le sol
+        if (fuseTicks > 0) {
+            fuseTicks--;
+            if (fuseTicks <= 0) {
+                explodeGas();
+                return;
+            }
+        }
+
+        // 💥 Explosion après délai si posé au sol
+        int delay = ModConfigs.GAS.GAS_EXPLODE_AFTER_TICKS.get();
+        if (ticksSinceLaunch >= delay && isGrounded()) {
             explodeGas();
         }
     }
@@ -71,6 +84,7 @@ public class GasBimEntity extends ProjectileItemEntity {
     @Override
     protected void onHit(RayTraceResult hit) {
         if (level.isClientSide) return;
+
         if (hit.getType() == RayTraceResult.Type.ENTITY) {
             this.onHitEntity((EntityRayTraceResult) hit);
             return;
@@ -117,14 +131,16 @@ public class GasBimEntity extends ProjectileItemEntity {
                 break;
             }
             case NORTH:
-            case SOUTH: {
-                this.setDeltaMovement(v.x * frictionWall, Math.abs(v.y) * 0.25, -v.z * restitutionWall);
-                SoundUtils.playRebound(level, getX(), getY(), getZ());
-                break;
-            }
+            case SOUTH:
             case EAST:
             case WEST: {
-                this.setDeltaMovement(-v.x * restitutionWall, Math.abs(v.y) * 0.25, v.z * frictionWall);
+                double pop = 0.05;
+                Vector3d newV = new Vector3d(
+                        face.getAxis() == Direction.Axis.X ? -v.x * restitutionWall : v.x * frictionWall,
+                        Math.min(Math.max(v.y * 0.25, 0.0) + pop, maxBounceUp * 0.6),
+                        face.getAxis() == Direction.Axis.Z ? -v.z * restitutionWall : v.z * frictionWall
+                );
+                this.setDeltaMovement(newV);
                 SoundUtils.playRebound(level, getX(), getY(), getZ());
                 break;
             }
@@ -137,6 +153,8 @@ public class GasBimEntity extends ProjectileItemEntity {
         if (!level.isClientSide && target instanceof LivingEntity) {
             float dmg = (float) (ModConfigs.GAS.GAS_IMPACT_HEARTS.get() * 2.0);
             target.hurt(new IndirectEntityDamageSource("gas_bim", this, this.getOwner()).setProjectile(), dmg);
+
+            // Petit rebond après impact
             Vector3d v = this.getDeltaMovement();
             this.setDeltaMovement(-v.x * 0.3, 0.1, -v.z * 0.3);
             SoundUtils.playRebound(level, getX(), getY(), getZ());
@@ -162,7 +180,7 @@ public class GasBimEntity extends ProjectileItemEntity {
         if (field != null) {
             field.setPos(this.getX(), this.getY() + 0.05, this.getZ());
             level.addFreshEntity(field);
-            SoundUtils.playGas(); // 🎧 son à l'apparition du gaz
+            SoundUtils.playGas();
         }
         this.remove();
     }

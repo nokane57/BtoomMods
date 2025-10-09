@@ -1,4 +1,3 @@
-// fr/nokane/btoommods/entity/misc/GasCloudFieldEntity.java
 package fr.nokane.btoommods.entity.misc;
 
 import fr.nokane.btoommods.config.ModConfigs;
@@ -6,9 +5,7 @@ import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.particle.ModParticles;
 import fr.nokane.btoommods.sound.ModSounds;
 import fr.nokane.btoommods.sound.SoundUtils;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.*;
 import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.util.DamageSource;
@@ -30,11 +27,14 @@ public class GasCloudFieldEntity extends Entity {
     private static final int HURT_PERIOD_TICKS = 10;
 
     private double radius = 1.0;
+    private double radiusY = 1.0;
     private double alphaFactor = 1.0;
+    private double spreadSpeed = 1.0;
 
     public GasCloudFieldEntity(EntityType<? extends GasCloudFieldEntity> type, World level) {
         super(type, level);
         this.noPhysics = true;
+        this.spreadSpeed = ModConfigs.GAS.GAS_SPREAD_SPEED.get();
     }
 
     @Override
@@ -45,33 +45,34 @@ public class GasCloudFieldEntity extends Entity {
         super.tick();
         age++;
 
-        // ▶️ Son du gaz à l’apparition (une seule fois, côté serveur)
+        // ▶️ Son du gaz à l’apparition
         if (!spawnSoundPlayed && !level.isClientSide) {
             spawnSoundPlayed = true;
-            SoundUtils.playWorldSound(
-                    level,
-                    this.getX(), this.getY(), this.getZ(),
-                    ModSounds.GAS_ITEM.get(),
-                    SoundUtils.VOL_GAS,
-                    1.5F
-            );
+            SoundUtils.playWorldSound(level, getX(), getY(), getZ(), ModSounds.GAS_ITEM.get(), SoundUtils.VOL_GAS, 1.5F);
         }
 
         final int lifetime = ModConfigs.GAS.GAS_EXPLODE_AFTER_TICKS.get() + 200;
         double lifeProgress = Math.min((double) age / lifetime, 1.0);
+        double adjusted = Math.min(lifeProgress * spreadSpeed, 1.0);
 
-        // Expansion → plateau → dissipation
         int baseRadius = ModConfigs.GAS.RADIUS.get();
-        if (lifeProgress < 0.25) {
-            radius = baseRadius * (lifeProgress / 0.25);
+        double maxH = ModConfigs.GAS.GAS_MAX_HEIGHT.get();
+
+        // Expansion + hauteur
+        if (adjusted < 0.25) {
+            double f = adjusted / 0.25;
+            radius = baseRadius * f;
+            radiusY = maxH * f;
             alphaFactor = 1.0;
-        } else if (lifeProgress < 0.75) {
+        } else if (adjusted < 0.75) {
             radius = baseRadius;
+            radiusY = maxH;
             alphaFactor = 1.0;
         } else {
-            double t = (lifeProgress - 0.75) / 0.25;
+            double t = (adjusted - 0.75) / 0.25;
             double inv = 1.0 - t;
             radius = baseRadius * (0.6 + 0.4 * inv);
+            radiusY = maxH * (0.6 + 0.4 * inv);
             alphaFactor = inv;
         }
 
@@ -126,7 +127,7 @@ public class GasCloudFieldEntity extends Entity {
         return Double.NaN;
     }
 
-    /** Dégâts appliqués dans tout le volume du nuage (cylindre horizontal + fenêtre verticale). */
+    /** Applique les dégâts du gaz sur les entités dans le volume */
     private void applyGasDamage() {
         boolean raining = level.isRainingAt(this.blockPosition());
         double heartsPerSec = raining
@@ -140,7 +141,7 @@ public class GasCloudFieldEntity extends Entity {
         if (Double.isNaN(groundY)) groundY = this.getY();
 
         double minH = ModConfigs.GAS.GAS_MIN_HEIGHT.get();
-        double maxH = ModConfigs.GAS.GAS_MAX_HEIGHT.get();
+        double maxH = this.radiusY; // ✅ hauteur dynamique
 
         double minY = groundY - minH;
         double maxY = groundY + maxH;
@@ -171,12 +172,12 @@ public class GasCloudFieldEntity extends Entity {
 
         for (int i = 0; i < samples; i++) {
             double angle = r.nextDouble() * Math.PI * 2.0;
-            double dist  = r.nextDouble() * radius;
+            double dist = r.nextDouble() * radius;
             double px = this.getX() + Math.cos(angle) * dist;
             double pz = this.getZ() + Math.sin(angle) * dist;
 
             double groundY = findGroundY(new BlockPos(px, this.getY(), pz));
-            double py = Double.isNaN(groundY) ? this.getY() : groundY + 0.70;
+            double py = Double.isNaN(groundY) ? this.getY() : groundY + (r.nextDouble() * radiusY);
 
             double vy = (r.nextDouble() - 0.5) * 0.002 * alphaFactor;
             level.addParticle(ModParticles.GAS_CLOUD.get(), px, py, pz, 0.0, vy, 0.0);
@@ -194,11 +195,13 @@ public class GasCloudFieldEntity extends Entity {
     @Override protected void readAdditionalSaveData(CompoundNBT nbt) {
         age = nbt.getInt("Age");
         radius = nbt.getDouble("Radius");
+        radiusY = nbt.getDouble("RadiusY");
     }
 
     @Override protected void addAdditionalSaveData(CompoundNBT nbt) {
         nbt.putInt("Age", age);
         nbt.putDouble("Radius", radius);
+        nbt.putDouble("RadiusY", radiusY);
     }
 
     @Override public net.minecraft.network.IPacket<?> getAddEntityPacket() {
