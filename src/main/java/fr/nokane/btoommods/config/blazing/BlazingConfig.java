@@ -13,6 +13,7 @@ public class BlazingConfig {
     public final ForgeConfigSpec.DoubleValue BLAZING_FIRE_DMG_INSIDE_HEARTS;
     public final ForgeConfigSpec.DoubleValue BLAZING_BURN_DMG_HEARTS;
     public final ForgeConfigSpec.IntValue BLAZING_BURN_DURATION;
+    public final ForgeConfigSpec.BooleanValue FIRE_DAMAGE_THROUGH_BLOCKS;
 
     public BlazingConfig(ForgeConfigSpec.Builder b) {
         b.push("blazing_bim");
@@ -61,6 +62,11 @@ public class BlazingConfig {
                 "FR: Durée de l'effet de brûlure appliqué (ticks).",
                 "EN: Duration of the applied burning effect (ticks)."
         ).defineInRange("burn_duration_ticks", 40, 10, 20 * 60 * 5);
+
+        FIRE_DAMAGE_THROUGH_BLOCKS = b.comment(
+                "FR: Si vrai, le feu inflige des dégâts jusqu’à 5 blocs au-dessus même à travers les blocs solides.",
+                "EN: If true, fire damages entities up to 5 blocks above even through solid blocks."
+        ).define("fire_damage_through_blocks", true);
 
         b.pop();
     }
