@@ -2,9 +2,7 @@ package fr.nokane.btoommods.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
 import net.minecraft.particles.ParticleTypes;
-import net.minecraft.potion.Effects;
 import net.minecraft.scoreboard.ScorePlayerTeam;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.common.MinecraftForge;
@@ -12,24 +10,14 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 
-/**
- * Gestion du glow radar client :
- * ✅ Portée = même que le radar serveur (jusqu’à 365 blocs)
- * ✅ Supprime les entités après expiration
- * ✅ Garde la team verte unique
- * ✅ Fonctionne même si les entités sont rechargées plus tard
- */
 public final class GlowClient {
 
     private static final Map<Integer, Long> GLOW_UNTIL = new HashMap<>();
-    private static final String TEAM_NAME = "glow_radar_green";
-    // Distance max visible temporairement (sera ajustée dynamiquement)
-    private static double forcedRenderDistance = 0.0;
+    private static final Map<Integer, String> ENTITY_TEAM = new HashMap<>();
 
+    private static final String TEAM_PREFIX = "gls_"; // court = safe
     private GlowClient() {}
 
     public static void install() {
@@ -38,38 +26,45 @@ public final class GlowClient {
         }
     }
 
-    /** Applique un glow coloré temporaire avec portée radar étendue */
-    public static void apply(int[] ids, int ticks, int colorRGB) {
+    /**
+     * Applique un glow coloré par slot (1–8).
+     * Le slot est encodé dans les 3 bits faibles de colorARGB côté RemoteBimEntity.
+     */
+    public static void apply(int[] ids, int ticks, int colorARGB) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
 
         long now = mc.level.getGameTime();
         long until = now + ticks;
 
-        // 🟢 Crée la team verte si elle n'existe pas
-        ScorePlayerTeam team = mc.level.getScoreboard().getPlayerTeam(TEAM_NAME);
+        // 🧩 slot est encodé par RemoteBimEntity (8 couleurs)
+        int slot = ((colorARGB >> 24) & 0xFF);
+        if (slot < 1 || slot > 8) slot = 1;
+
+        TextFormatting fmt = SLOT_COLOR.getOrDefault(slot, TextFormatting.WHITE);
+        String teamName = TEAM_PREFIX + slot;
+
+        ScorePlayerTeam team = mc.level.getScoreboard().getPlayerTeam(teamName);
         if (team == null) {
-            team = mc.level.getScoreboard().addPlayerTeam(TEAM_NAME);
-            team.setColor(TextFormatting.GREEN);
+            team = mc.level.getScoreboard().addPlayerTeam(teamName);
+            team.setColor(fmt);
             team.setSeeFriendlyInvisibles(false);
             team.setAllowFriendlyFire(true);
         }
-
-        // 🔄 Étend temporairement la distance de rendu des entités (simule jusqu’à 400 blocs)
-        forcedRenderDistance = Math.max(forcedRenderDistance, 400.0);
 
         for (int id : ids) {
             Entity e = mc.level.getEntity(id);
             if (e != null) {
                 e.setGlowing(true);
-                if (e.getName() != null) {
-                    String name = e.getName().getString();
-                    if (mc.level.getScoreboard().getPlayersTeam(name) != team) {
-                        mc.level.getScoreboard().addPlayerToTeam(name, team);
-                    }
+                String sbName = e.getScoreboardName();
+                ScorePlayerTeam cur = mc.level.getScoreboard().getPlayersTeam(sbName);
+                if (cur != team) {
+                    if (cur != null)
+                        mc.level.getScoreboard().removePlayerFromTeam(sbName, cur);
+                    mc.level.getScoreboard().addPlayerToTeam(sbName, team);
                 }
+                ENTITY_TEAM.put(id, teamName);
             }
-            // 🔒 garde l’état du glow même si l’entité est temporairement déchargée
             GLOW_UNTIL.merge(id, until, Math::max);
         }
     }
@@ -81,8 +76,6 @@ public final class GlowClient {
         if (mc.level == null) return;
 
         long now = mc.level.getGameTime();
-        ScorePlayerTeam team = mc.level.getScoreboard().getPlayerTeam(TEAM_NAME);
-
         Iterator<Map.Entry<Integer, Long>> it = GLOW_UNTIL.entrySet().iterator();
 
         while (it.hasNext()) {
@@ -91,41 +84,45 @@ public final class GlowClient {
             long expire = entry.getValue();
 
             Entity ent = mc.level.getEntity(id);
-            if (ent != null) {
-                // 🟩 Si visible, on s'assure qu'elle reste glowée
-                if (!ent.isGlowing()) ent.setGlowing(true);
-            }
+            if (ent != null && !ent.isGlowing()) ent.setGlowing(true);
 
-            // ⏳ Retirer quand expiré
             if (now >= expire) {
                 if (ent != null) {
                     ent.setGlowing(false);
-                    if (team != null && ent.getName() != null) {
-                        String name = ent.getName().getString();
-                        // ✅ Évite le crash : vérifie si la team correspond avant de retirer
-                        if (mc.level.getScoreboard().getPlayersTeam(name) == team) {
-                            mc.level.getScoreboard().removePlayerFromTeam(name, team);
+                    String teamName = ENTITY_TEAM.remove(id);
+                    if (teamName != null) {
+                        ScorePlayerTeam team = mc.level.getScoreboard().getPlayerTeam(teamName);
+                        if (team != null) {
+                            String sbName = ent.getScoreboardName();
+                            if (mc.level.getScoreboard().getPlayersTeam(sbName) == team)
+                                mc.level.getScoreboard().removePlayerFromTeam(sbName, team);
                         }
                     }
                 }
                 it.remove();
             }
         }
-
-        // 🧹 Supprime la team quand elle est vide
-        if (team != null && team.getPlayers().isEmpty()) {
-            mc.level.getScoreboard().removePlayerTeam(team);
-        }
     }
 
-    /** Particules pour les Remote BIM */
     public static void spawnRemoteOwnerMarker(double x, double y, double z) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
-
         for (int i = 0; i < 10; i++)
             mc.level.addParticle(ParticleTypes.CRIT, x, y, z, 0.0, 0.02, 0.0);
         for (int i = 0; i < 4; i++)
             mc.level.addParticle(ParticleTypes.END_ROD, x, y + 0.1, z, 0.0, 0.01, 0.0);
+    }
+
+    // ---------- Table de correspondance slot → couleur vanilla ----------
+    private static final Map<Integer, TextFormatting> SLOT_COLOR = new HashMap<>();
+    static {
+        SLOT_COLOR.put(1, TextFormatting.RED);
+        SLOT_COLOR.put(2, TextFormatting.YELLOW);
+        SLOT_COLOR.put(3, TextFormatting.GREEN);
+        SLOT_COLOR.put(4, TextFormatting.AQUA);
+        SLOT_COLOR.put(5, TextFormatting.LIGHT_PURPLE);
+        SLOT_COLOR.put(6, TextFormatting.LIGHT_PURPLE);
+        SLOT_COLOR.put(7, TextFormatting.RED);
+        SLOT_COLOR.put(8, TextFormatting.DARK_AQUA);
     }
 }
