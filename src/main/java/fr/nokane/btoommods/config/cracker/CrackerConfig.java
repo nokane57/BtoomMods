@@ -21,6 +21,7 @@ public class CrackerConfig {
 
     // --- Divers ---
     public final ForgeConfigSpec.IntValue LIFETIME_TICKS;
+    public final ForgeConfigSpec.IntValue COOLDOWN_TICKS;
 
     public CrackerConfig(ForgeConfigSpec.Builder b) {
         b.push("cracker_bim");
@@ -81,6 +82,11 @@ public class CrackerConfig {
                 "FR: Durée de vie de l'entité projectile avant disparition (ticks).",
                 "EN: Lifetime of the projectile entity before despawn (ticks)."
         ).defineInRange("lifetime_ticks", 200, 20, 20 * 60 * 10);
+
+        COOLDOWN_TICKS = b.comment(
+                "FR: Délai (en ticks) entre deux tirs du Cracker BIM (20 = 1 seconde).",
+                "EN: Cooldown in ticks between two Cracker BIM throws (20 = 1 second)."
+        ).defineInRange("cooldown_ticks", 20, 0, 200);
 
         b.pop();
     }

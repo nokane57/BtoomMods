@@ -30,6 +30,12 @@ public class CrackerBimItem extends Item {
     @Override
     public ActionResult<ItemStack> use(World world, PlayerEntity player, Hand hand) {
         ItemStack stack = player.getItemInHand(hand);
+
+        // 🕒 Empêche de tirer si cooldown actif
+        if (player.getCooldowns().isOnCooldown(this)) {
+            return ActionResult.fail(stack);
+        }
+
         SoundUtils.playWorldSound(world, player.getX(), player.getY(), player.getZ(),
                 fr.nokane.btoommods.sound.ModSounds.PI_ITEM.get(), 1.3F, 1.0F);
         player.startUsingItem(hand);
@@ -62,7 +68,17 @@ public class CrackerBimItem extends Item {
             }
         }
 
-        if (!player.abilities.instabuild) stack.shrink(1);
+        // 🕒 Applique le cooldown depuis la config
+        int cooldown = ModConfigs.CRACKER.COOLDOWN_TICKS.get();
+        player.getCooldowns().addCooldown(this, cooldown);
+
+        // 🔒 Bloque temporairement l’ouverture de l’inventaire pendant le cooldown
+        if (!world.isClientSide)
+            player.getPersistentData().putInt("cracker_bim_cooldown", cooldown);
+
+        if (!player.abilities.instabuild)
+            stack.shrink(1);
+
         player.awardStat(Stats.ITEM_USED.get(this));
     }
 
