@@ -14,6 +14,7 @@ public class BlazingConfig {
     public final ForgeConfigSpec.DoubleValue BLAZING_BURN_DMG_HEARTS;
     public final ForgeConfigSpec.IntValue BLAZING_BURN_DURATION;
     public final ForgeConfigSpec.BooleanValue FIRE_DAMAGE_THROUGH_BLOCKS;
+    public final ForgeConfigSpec.IntValue COOLDOWN_TICKS;
 
     public BlazingConfig(ForgeConfigSpec.Builder b) {
         b.push("blazing_bim");
@@ -67,6 +68,12 @@ public class BlazingConfig {
                 "FR: Si vrai, le feu inflige des dégâts jusqu’à 5 blocs au-dessus même à travers les blocs solides.",
                 "EN: If true, fire damages entities up to 5 blocks above even through solid blocks."
         ).define("fire_damage_through_blocks", true);
+
+        COOLDOWN_TICKS = b.comment(
+                "FR: Délai (en ticks) entre deux tirs du Blazing BIM (20 = 1 seconde).",
+                "EN: Cooldown in ticks between two Blazing BIM throws (20 = 1 second)."
+        ).defineInRange("cooldown_ticks", 20, 0, 200);
+
 
         b.pop();
     }

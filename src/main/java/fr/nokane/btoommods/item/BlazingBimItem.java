@@ -4,6 +4,7 @@ import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.entity.item.BlazingBimEntity;
 import fr.nokane.btoommods.sound.SoundUtils;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.*;
 import net.minecraft.stats.Stats;
@@ -31,12 +32,18 @@ public class BlazingBimItem extends Item {
     @Override
     public ActionResult<ItemStack> use(World level, PlayerEntity player, Hand hand) {
         ItemStack stack = player.getItemInHand(hand);
+
+        // 🕒 Empêche de tirer si cooldown actif
+        if (player.getCooldowns().isOnCooldown(this)) {
+            return ActionResult.fail(stack);
+        }
+
         player.startUsingItem(hand);
         return new ActionResult<>(ActionResultType.CONSUME, stack);
     }
 
     @Override
-    public void releaseUsing(ItemStack stack, World level, net.minecraft.entity.LivingEntity living, int timeLeft) {
+    public void releaseUsing(ItemStack stack, World level, LivingEntity living, int timeLeft) {
         if (!(living instanceof PlayerEntity)) return;
         PlayerEntity player = (PlayerEntity) living;
 
@@ -56,7 +63,6 @@ public class BlazingBimItem extends Item {
                 double poids = ModConfigs.BLAZING.POIDS_PROJECTILE.get();
 
                 // 🔢 Logique équilibrée : plus c’est lourd, moins ça va vite
-                // vitesse_effective = base * (speedMult / sqrt(poids))
                 float adjustedVelocity = (float) (3.0F * power * (speedMult / Math.sqrt(poids)));
 
                 // Tir avec précision (1.0F = petite dispersion)
@@ -66,10 +72,20 @@ public class BlazingBimItem extends Item {
             }
         }
 
-                SoundUtils.playWorldSound(level, player.getX(), player.getY(), player.getZ(),
-                        PI_ITEM.get(), 1.3F, 1.0F);
+        // 🔊 Son de tir
+        SoundUtils.playWorldSound(level, player.getX(), player.getY(), player.getZ(),
+                PI_ITEM.get(), 1.3F, 1.0F);
+
+        // 🕒 Applique le cooldown configurable
+        int cooldown = ModConfigs.BLAZING.COOLDOWN_TICKS.get();
+        player.getCooldowns().addCooldown(this, cooldown);
+
+        // 🔒 Bloque temporairement l’inventaire
+        if (!level.isClientSide)
+            player.getPersistentData().putInt("blazing_bim_cooldown", cooldown);
 
         player.awardStat(Stats.ITEM_USED.get(this));
-        if (!player.abilities.instabuild) stack.shrink(1);
+        if (!player.abilities.instabuild)
+            stack.shrink(1);
     }
 }
