@@ -78,6 +78,15 @@ public class ModItems {
                 }
             });
 
+    // Remote Bracelet
+    public static final RegistryObject<Item> REMOTE_BRACELET = ITEMS.register("remote_bracelet",
+            () -> new RemoteBraceletItem(new Item.Properties()
+                    .tab(ItemGroup.TAB_MISC)
+                    .stacksTo(1))
+    );
+
+
+
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);
     }
