@@ -2,17 +2,12 @@ package fr.nokane.btoommods.client;
 
 import fr.nokane.btoommods.Btoommods;
 import fr.nokane.btoommods.entity.ModEntities;
-import fr.nokane.btoommods.entity.item.TimerBimProjectileEntity;
-import fr.nokane.btoommods.item.TimerBimItem;
 import fr.nokane.btoommods.net.Net;
 import fr.nokane.btoommods.net.RadarScanC2S;
 import fr.nokane.btoommods.net.TimerKeyC2S;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.SpriteRenderer;
 import net.minecraft.client.settings.KeyBinding;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompoundNBT;
-import net.minecraft.util.text.StringTextComponent;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -29,12 +24,10 @@ public class ClientSetup {
     private static KeyBinding RADAR_KEY;
     private static KeyBinding REMOTE_GUI_KEY;
     private static KeyBinding TIMER_TOGGLE_KEY;
-    private static KeyBinding TIMER_RESET_KEY;
-    private static KeyBinding TIMER_OFF_KEY;
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent e) {
-        // Renders
+        // === Renders ===
         RenderingRegistry.registerEntityRenderingHandler(
                 ModEntities.CRACKER_BIM.get(),
                 mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
@@ -51,6 +44,11 @@ public class ClientSetup {
                 ModEntities.GAS_BIM.get(),
                 mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
         );
+        // ✅ Ajout du renderer manquant pour le BIM gaz vide
+        RenderingRegistry.registerEntityRenderingHandler(
+                ModEntities.GAS_BIM_DISABLED.get(),
+                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
+        );
         RenderingRegistry.registerEntityRenderingHandler(
                 ModEntities.GAS_CLOUD_FIELD.get(),
                 EmptyRenderer::new
@@ -64,7 +62,7 @@ public class ClientSetup {
                 mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
         );
 
-        // Keybindings
+        // === Keybindings ===
         RADAR_KEY        = new KeyBinding("key.btoommods.radar",           GLFW.GLFW_KEY_R, "key.categories.btoommods");
         REMOTE_GUI_KEY   = new KeyBinding("key.btoommods.remote_bracelet", GLFW.GLFW_KEY_B, "key.categories.btoommods");
         TIMER_TOGGLE_KEY = new KeyBinding("key.btoommods.timer_toggle",    GLFW.GLFW_KEY_G, "key.categories.btoommods");
@@ -75,7 +73,7 @@ public class ClientSetup {
 
         GlowClient.install();
 
-        // Tick client
+        // === Tick client ===
         MinecraftForge.EVENT_BUS.addListener(ClientSetup::onClientTick);
     }
 

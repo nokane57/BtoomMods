@@ -1,4 +1,3 @@
-// fr/nokane/btoommods/entity/ModEntities.java
 package fr.nokane.btoommods.entity;
 
 import fr.nokane.btoommods.Btoommods;
@@ -17,6 +16,10 @@ public class ModEntities {
 
     public static final DeferredRegister<EntityType<?>> ENTITIES =
             DeferredRegister.create(ForgeRegistries.ENTITIES, Btoommods.MOD_ID);
+
+    // =============================
+    // === BIMs / Explosifs divers
+    // =============================
 
     public static final RegistryObject<EntityType<CrackerBimEntity>> CRACKER_BIM =
             ENTITIES.register("cracker_bim_projectile", () ->
@@ -45,6 +48,7 @@ public class ModEntities {
                             .build(new ResourceLocation(Btoommods.MOD_ID, "blazing_fire_field").toString())
             );
 
+    // === Gas BIM (actif) ===
     public static final RegistryObject<EntityType<GasBimEntity>> GAS_BIM =
             ENTITIES.register("gas_bim_projectile", () ->
                     EntityType.Builder.<GasBimEntity>of(GasBimEntity::new, EntityClassification.MISC)
@@ -52,6 +56,16 @@ public class ModEntities {
                             .clientTrackingRange(64)
                             .updateInterval(10)
                             .build(new ResourceLocation(Btoommods.MOD_ID, "gas_bim_projectile").toString())
+            );
+
+    // === Gas BIM (désactivé / vide) ===
+    public static final RegistryObject<EntityType<GasDisabledBimEntity>> GAS_BIM_DISABLED =
+            ENTITIES.register("gas_bim_disabled_projectile", () ->
+                    EntityType.Builder.<GasDisabledBimEntity>of(GasDisabledBimEntity::new, EntityClassification.MISC)
+                            .sized(0.25F, 0.25F)
+                            .clientTrackingRange(64)
+                            .updateInterval(10)
+                            .build(new ResourceLocation(Btoommods.MOD_ID, "gas_bim_disabled_projectile").toString())
             );
 
     public static final RegistryObject<EntityType<GasCloudFieldEntity>> GAS_CLOUD_FIELD =
@@ -77,12 +91,9 @@ public class ModEntities {
                     EntityType.Builder.<TimerBimProjectileEntity>of(TimerBimProjectileEntity::new, EntityClassification.MISC)
                             .sized(0.25f, 0.25f)
                             .clientTrackingRange(64)
-                            .updateInterval(1) // <<< important pour éviter de traverser
+                            .updateInterval(1)
                             .build(new ResourceLocation(Btoommods.MOD_ID, "timer_bim_projectile").toString())
             );
-
-
-
 
     public static void register(IEventBus bus) {
         ENTITIES.register(bus);

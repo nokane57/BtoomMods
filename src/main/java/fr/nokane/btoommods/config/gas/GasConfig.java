@@ -5,7 +5,6 @@ import net.minecraftforge.common.ForgeConfigSpec;
 public class GasConfig {
 
     public final ForgeConfigSpec.IntValue GAS_ENABLED_STACK;
-    public final ForgeConfigSpec.IntValue GAS_DISABLED_STACK;
 
     public final ForgeConfigSpec.DoubleValue VITESSE_PROJECTILE;
     public final ForgeConfigSpec.DoubleValue POIDS_PROJECTILE;
@@ -39,8 +38,6 @@ public class GasConfig {
         GAS_ENABLED_STACK = b.comment("Taille max de stack pour la bombe à gaz activée.")
                 .defineInRange("enabled_stack", 16, 1, 64);
 
-        GAS_DISABLED_STACK = b.comment("Taille max de stack pour la coque vide (gaz désactivé).")
-                .defineInRange("disabled_stack", 16, 1, 64);
 
         VITESSE_PROJECTILE = b.comment("Multiplicateur de vitesse initiale du projectile de gaz.")
                 .defineInRange("projectile_speed_mult", 0.85D, 0.1D, 10.0D);

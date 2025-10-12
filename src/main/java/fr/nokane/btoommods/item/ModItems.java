@@ -41,7 +41,7 @@ public class ModItems {
                 }
             });
 
-    // Gas BIM (⚠️ lit la bonne clé: GAS_ENABLED_STACK)
+    // Gas BIM (actif)
     public static final RegistryObject<Item> GAS_BIM = ITEMS.register("gas_bim",
             () -> new GasBimItem(new Item.Properties().tab(ItemGroup.TAB_COMBAT)) {
                 @Override
@@ -50,12 +50,14 @@ public class ModItems {
                 }
             });
 
-    // Gas BIM (coque vide) (⚠️ lit GAS_DISABLED_STACK)
+    // ✅ Gas BIM (coque vide) corrigé — projectile fonctionnel
     public static final RegistryObject<Item> GAS_BIM_DISABLED = ITEMS.register("gas_bim_disabled",
-            () -> new StackFromConfigItem(
-                    new Item.Properties().tab(ItemGroup.TAB_MISC),
-                    () -> ModConfigs.GAS.GAS_DISABLED_STACK.get()
-            ));
+            () -> new GasDisabledBimItem(new Item.Properties().tab(ItemGroup.TAB_COMBAT)) {
+                @Override
+                public int getItemStackLimit(ItemStack stack) {
+                    return Math.max(1, Math.min(ModConfigs.GAS_DISABLED.GAS_DISABLED_STACK.get(), 64));
+                }
+            });
 
     // Radar implant
     public static final RegistryObject<Item> RADAR_ITEM = ITEMS.register("radar",
@@ -72,7 +74,6 @@ public class ModItems {
             () -> new TimerBimItem(new Item.Properties().tab(ItemGroup.TAB_COMBAT)) {
                 @Override
                 public int getItemStackLimit(ItemStack stack) {
-                    // Lecture dynamique depuis la config Forge
                     return Math.max(1, Math.min(ModConfigs.TIMER.STACK.get(), 64));
                 }
             });

@@ -4,6 +4,7 @@ import fr.nokane.btoommods.Btoommods;
 import fr.nokane.btoommods.config.blazing.BlazingConfig;
 import fr.nokane.btoommods.config.cracker.CrackerConfig;
 import fr.nokane.btoommods.config.gas.GasConfig;
+import fr.nokane.btoommods.config.gas.GasDisabledConfig;
 import fr.nokane.btoommods.config.remote.RemoteConfig;
 import fr.nokane.btoommods.config.radar.RadarConfig;
 import fr.nokane.btoommods.config.timer.TimerConfig;
@@ -14,9 +15,10 @@ import net.minecraftforge.fml.config.ModConfig;
 public class ModConfigs {
 
     // ---- CONFIGS PAR ITEM ----
-    public static ForgeConfigSpec TIMER_SPEC, GAS_SPEC, CRACKER_SPEC, BLAZING_SPEC, REMOTE_SPEC, RADAR_SPEC;
+    public static ForgeConfigSpec TIMER_SPEC, GAS_SPEC, CRACKER_SPEC, BLAZING_SPEC, REMOTE_SPEC, RADAR_SPEC, GAS_DISABLED_SPEC;
     public static TimerConfig TIMER;
     public static GasConfig GAS;
+    public static GasDisabledConfig GAS_DISABLED;
     public static CrackerConfig CRACKER;
     public static BlazingConfig BLAZING;
     public static RemoteConfig REMOTE;
@@ -36,6 +38,11 @@ public class ModConfigs {
         GAS = new GasConfig(gasBuilder);
         GAS_SPEC = gasBuilder.build();
         ctx.registerConfig(ModConfig.Type.COMMON, GAS_SPEC, Btoommods.MOD_ID + "/gas_bim.toml");
+
+        ForgeConfigSpec.Builder gasDisabledBuilder = new ForgeConfigSpec.Builder();
+        GAS_DISABLED = new GasDisabledConfig(gasDisabledBuilder);
+        GAS_DISABLED_SPEC = gasDisabledBuilder.build();
+        ctx.registerConfig(ModConfig.Type.COMMON, GAS_DISABLED_SPEC, Btoommods.MOD_ID + "/gas_bim_disabled.toml");
 
         // === CRACKER BIM ===
         ForgeConfigSpec.Builder crackerBuilder = new ForgeConfigSpec.Builder();
