@@ -1,5 +1,42 @@
 {
-  "textures": {
-    "layer0": "btoommods:item/radar"
+  "loader": "forge:obj",
+  "model": "btoommods:models/item/radar.obj",
+  "flip-v": true,
+  "detectCullableFaces": false,
+
+  "display": {
+    "thirdperson_righthand": {
+      "scale": [0.0, 0.0, 0.0],
+      "translation": [0, 0, 0],
+      "rotation": [0, 0, 0]
+    },
+    "thirdperson_lefthand": {
+      "scale": [0.0, 0.0, 0.0],
+      "translation": [0, 0, 0],
+      "rotation": [0, 0, 0]
+    },
+    "firstperson_righthand": {
+      "rotation": [0.0, 0, 0],
+      "translation": [0.0, 0.0, 0.0],
+      "scale": [0.0, 0.0, 0.0]
+    },
+    "firstperson_lefthand": {
+      "rotation": [0.0, 0, 0.0],
+      "translation": [0.0, 0, 0],
+      "scale": [0.0, 0.0, 0.0]
+    },
+    "ground": {
+      "rotation": [0, 0, 0],
+      "translation": [0, 2, 0],
+      "scale": [1, 1, 1]
+    },
+    "gui": {
+      "scale": [2.0, 2.0, 2.0],
+      "rotation": [10.0, 60.0, 90.0],
+      "translation": [10.0, 12.7, 5.0]
+    },
+    "fixed": {
+      "rotation": [0, 0, 0]
+    }
   }
 }

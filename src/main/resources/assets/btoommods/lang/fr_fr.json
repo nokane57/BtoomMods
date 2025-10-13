@@ -5,6 +5,8 @@
   "item.btoommods.remote_bim": "Remote BIM",
   "item.btoommods.gas_bim": "Gas BIM",
   "item.btoommods.gas_bim_disabled": "Gas BIM désactivé",
+  "item.btoommods.radar": "Radar",
+  "item.btoommods.remote_bracelet": "Remote Bracelet",
 
   "key.categories.btoommods": "Btooom Mods",
   "key.btoommods.radar": "Radar (scan)",
