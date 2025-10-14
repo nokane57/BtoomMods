@@ -31,6 +31,11 @@ public class RemoteBraceletItem extends Item {
     public ActionResult<ItemStack> use(World world, PlayerEntity player, Hand hand) {
         ItemStack stack = player.getItemInHand(hand);
 
+        // ❌ Si tenu dans la main secondaire : ne rien faire
+        if (hand == Hand.OFF_HAND) {
+            return ActionResult.success(stack);
+        }
+
         // ✅ Côté client : ouvrir le GUI via DistExecutor
         if (world.isClientSide) {
             DistExecutor.safeRunWhenOn(Dist.CLIENT, () -> ClientActions::openBraceletGui);
@@ -42,7 +47,8 @@ public class RemoteBraceletItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, @Nullable World world, List<ITextComponent> tooltip, ITooltipFlag flag) {
         tooltip.add(new StringTextComponent("§7Un bracelet de télécommande haute technologie."));
-        tooltip.add(new StringTextComponent("§8Clique droit pour ouvrir le module de contrôle."));
+        tooltip.add(new StringTextComponent("§8Clique droit (main principale) pour ouvrir le module de contrôle."));
+        tooltip.add(new StringTextComponent("§8Tenir en main secondaire pour activer avec les touches 1–8."));
         super.appendHoverText(stack, world, tooltip, flag);
     }
 
@@ -52,7 +58,6 @@ public class RemoteBraceletItem extends Item {
     @OnlyIn(Dist.CLIENT)
     private static class ClientActions {
         public static void openBraceletGui() {
-            // On importe ici seulement côté client
             fr.nokane.btoommods.client.ClientOnly.openBraceletScreen();
         }
     }

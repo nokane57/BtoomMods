@@ -5,9 +5,12 @@ import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.net.Net;
 import fr.nokane.btoommods.net.RadarScanC2S;
 import fr.nokane.btoommods.net.TimerKeyC2S;
+import fr.nokane.btoommods.net.RemoteTriggerC2S;
+import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.SpriteRenderer;
 import net.minecraft.client.settings.KeyBinding;
+import net.minecraft.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -44,7 +47,6 @@ public class ClientSetup {
                 ModEntities.GAS_BIM.get(),
                 mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
         );
-        // ✅ Ajout du renderer manquant pour le BIM gaz vide
         RenderingRegistry.registerEntityRenderingHandler(
                 ModEntities.GAS_BIM_DISABLED.get(),
                 mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
@@ -83,19 +85,41 @@ public class ClientSetup {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
 
-        // Radar
+        // === Radar ===
         while (RADAR_KEY.consumeClick()) {
             Net.CH.sendToServer(new RadarScanC2S());
         }
 
-        // Ouvrir le GUI du bracelet
+        // === Ouvrir le GUI du bracelet (main principale) ===
         while (REMOTE_GUI_KEY.consumeClick()) {
             mc.setScreen(new fr.nokane.btoommods.client.screen.RemoteBraceletScreen());
         }
 
-        // Timer toggle
+        // === Timer toggle ===
         while (TIMER_TOGGLE_KEY.consumeClick()) {
             Net.CH.sendToServer(new TimerKeyC2S(TimerKeyC2S.Action.TOGGLE));
+        }
+
+        // === Activation directe via touches 1–8 si bracelet dans la main secondaire ===
+        ItemStack off = mc.player.getOffhandItem();
+        if (!off.isEmpty() && off.getItem() instanceof fr.nokane.btoommods.item.RemoteBraceletItem) {
+            long window = mc.getWindow().getWindow();
+
+            for (int key = GLFW.GLFW_KEY_1; key <= GLFW.GLFW_KEY_8; key++) {
+                if (GLFW.glfwGetKey(window, key) == GLFW.GLFW_PRESS) {
+                    int slot = (key - GLFW.GLFW_KEY_1) + 1;
+                    Net.CH.sendToServer(new RemoteTriggerC2S(slot));
+                    SoundUtils.playClac();
+                }
+            }
+
+            for (int key = GLFW.GLFW_KEY_KP_1; key <= GLFW.GLFW_KEY_KP_8; key++) {
+                if (GLFW.glfwGetKey(window, key) == GLFW.GLFW_PRESS) {
+                    int slot = (key - GLFW.GLFW_KEY_KP_1) + 1;
+                    Net.CH.sendToServer(new RemoteTriggerC2S(slot));
+                    SoundUtils.playClac();
+                }
+            }
         }
     }
 }
