@@ -17,10 +17,7 @@ public class ModEntities {
     public static final DeferredRegister<EntityType<?>> ENTITIES =
             DeferredRegister.create(ForgeRegistries.ENTITIES, Btoommods.MOD_ID);
 
-    // =============================
-    // === BIMs / Explosifs divers
-    // =============================
-
+    // === Cracker BIM ===
     public static final RegistryObject<EntityType<CrackerBimEntity>> CRACKER_BIM =
             ENTITIES.register("cracker_bim_projectile", () ->
                     EntityType.Builder.<CrackerBimEntity>of(CrackerBimEntity::new, EntityClassification.MISC)
@@ -30,6 +27,7 @@ public class ModEntities {
                             .build(new ResourceLocation(Btoommods.MOD_ID, "cracker_bim_projectile").toString())
             );
 
+    // === Blazing BIM ===
     public static final RegistryObject<EntityType<BlazingBimEntity>> BLAZING_BIM =
             ENTITIES.register("blazing_bim_projectile", () ->
                     EntityType.Builder.<BlazingBimEntity>of(BlazingBimEntity::new, EntityClassification.MISC)
@@ -48,7 +46,7 @@ public class ModEntities {
                             .build(new ResourceLocation(Btoommods.MOD_ID, "blazing_fire_field").toString())
             );
 
-    // === Gas BIM (actif) ===
+    // === Gas BIM ===
     public static final RegistryObject<EntityType<GasBimEntity>> GAS_BIM =
             ENTITIES.register("gas_bim_projectile", () ->
                     EntityType.Builder.<GasBimEntity>of(GasBimEntity::new, EntityClassification.MISC)
@@ -58,7 +56,6 @@ public class ModEntities {
                             .build(new ResourceLocation(Btoommods.MOD_ID, "gas_bim_projectile").toString())
             );
 
-    // === Gas BIM (désactivé / vide) ===
     public static final RegistryObject<EntityType<GasDisabledBimEntity>> GAS_BIM_DISABLED =
             ENTITIES.register("gas_bim_disabled_projectile", () ->
                     EntityType.Builder.<GasDisabledBimEntity>of(GasDisabledBimEntity::new, EntityClassification.MISC)
@@ -77,15 +74,17 @@ public class ModEntities {
                             .build(new ResourceLocation(Btoommods.MOD_ID, "gas_cloud_field").toString())
             );
 
+    // === Remote BIM ===
     public static final RegistryObject<EntityType<RemoteBimEntity>> REMOTE_BIM =
             ENTITIES.register("remote_bim", () ->
                     EntityType.Builder.<RemoteBimEntity>of(RemoteBimEntity::new, EntityClassification.MISC)
                             .sized(0.1F, 0.1F)
-                            .clientTrackingRange(64)
-                            .updateInterval(20)
+                            .clientTrackingRange(256) // ✅ Longue portée
+                            .updateInterval(10)
                             .build(new ResourceLocation(Btoommods.MOD_ID, "remote_bim").toString())
             );
 
+    // === Timer BIM ===
     public static final RegistryObject<EntityType<TimerBimProjectileEntity>> TIMER_BIM_PROJECTILE =
             ENTITIES.register("timer_bim_projectile", () ->
                     EntityType.Builder.<TimerBimProjectileEntity>of(TimerBimProjectileEntity::new, EntityClassification.MISC)
