@@ -37,7 +37,7 @@ displayName = "${mod_name}" #mandatory
 # Liens et métadonnées optionnels
 #updateJSONURL = "https://change.me.example.invalid/updates.json"
 #displayURL = "https://change.me.to.your.mods.homepage.example.invalid/"
-logoFile = "btoommods.png" #optional
+logoFile = "btooom-banner-minecraft.png" #optional
 
 # Credits (shown in the mod list)
 # Crédits (affichés dans la liste des mods)
