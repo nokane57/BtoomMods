@@ -29,6 +29,7 @@ public class TimerConfig {
     // ---- Dégâts ----
     public final ForgeConfigSpec.DoubleValue IMPACT_HEARTS;
     public final ForgeConfigSpec.IntValue COOLDOWN_TICKS;
+    public final ForgeConfigSpec.DoubleValue EXPLOSION_VISUAL_RADIUS;
 
     public TimerConfig(ForgeConfigSpec.Builder b) {
         b.comment("Configuration du Timer BIM").push("timer");
@@ -97,6 +98,9 @@ public class TimerConfig {
                 "FR: Délai (en ticks) entre deux tirs du Cracker BIM (20 = 1 seconde).",
                 "EN: Cooldown in ticks between two Cracker BIM throws (20 = 1 second)."
         ).defineInRange("cooldown_ticks", 20, 0, 200);
+
+        EXPLOSION_VISUAL_RADIUS = b.comment("Rayon visuel de l'explosion (n'affecte pas les dégâts).")
+                .defineInRange("explosion_visual_radius", 6.0D, 0.5D, 128.0D);
 
         b.pop();
     }

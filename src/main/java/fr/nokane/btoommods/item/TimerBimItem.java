@@ -73,12 +73,18 @@ public class TimerBimItem extends Item {
     }
 
     public static int getDisplaySeconds(ItemStack stack) {
-        CompoundNBT tag = stack.getOrCreateTag();
-        if (!tag.contains(NBT_REMAINING)) tag.putInt(NBT_REMAINING, getMaxTicks());
+        if (!stack.hasTag()) return -1;
+        CompoundNBT tag = stack.getTag();
+        if (tag == null) return -1;
+
+        if (!tag.contains(NBT_REMAINING)) return -1;
         int ticks = tag.getInt(NBT_REMAINING);
         if (ticks <= 0) return -1;
-        return Math.max(0, Math.min(getMaxSeconds(), (int)Math.ceil(ticks / 20.0)));
+
+        return Math.max(0, Math.min(getMaxSeconds(), (int) Math.ceil(ticks / 20.0)));
     }
+
+
 
     @Override
     public void inventoryTick(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
@@ -178,8 +184,8 @@ public class TimerBimItem extends Item {
     }
 
     // ==========================================================
-    // 💥 Explosion sécurisée (ne détruit jamais les items)
-    // ==========================================================
+// 💥 Explosion sécurisée (ne détruit jamais les items)
+// ==========================================================
     public static void safeExplosion(World world, double x, double y, double z) {
         if (!(world instanceof ServerWorld)) return;
         ServerWorld sw = (ServerWorld) world;
@@ -187,17 +193,35 @@ public class TimerBimItem extends Item {
         boolean breakBlocks = ModConfigs.TIMER.BREAK_BLOCKS.get();
         boolean fire = ModConfigs.TIMER.CAUSES_FIRE.get();
         boolean noItemDestroy = ModConfigs.TIMER.NO_ITEM_DESTROY.get();
+
         double blockRadius = ModConfigs.TIMER.BREAK_BLOCK_RADIUS.get();
-        double radius = ModConfigs.TIMER.EXPLOSION_RADIUS.get();
+        double radius = ModConfigs.TIMER.EXPLOSION_RADIUS.get(); // dégâts
+        double visualRadius = ModConfigs.TIMER.EXPLOSION_VISUAL_RADIUS.get(); // rayon visuel (nouvelle config)
         float power = ModConfigs.TIMER.EXPLOSION_STRENGTH.get().floatValue();
 
         BlockPos center = new BlockPos(x, y, z);
 
-        // 💥 Effet visuel
-        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 0.8F, 1.0F);
+        // 💥 Effets visuels et sonores
+        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 1.0F, 1.0F);
+        sw.sendParticles(ParticleTypes.EXPLOSION, x, y, z, (int)(visualRadius * 4), visualRadius / 2, visualRadius / 2, visualRadius / 2, 0.1);
         sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, x, y, z, 1, 0, 0, 0, 0);
 
-        // 🧱 Casse manuelle des blocs
+        // 💀 Explosion vanilla : applique dégâts et knockback
+        Explosion explosion = new Explosion(
+                world,
+                null, // pas d'entité source
+                null,
+                null,
+                x, y, z,
+                power,
+                fire,
+                breakBlocks ? Explosion.Mode.DESTROY : Explosion.Mode.NONE
+        );
+
+        explosion.explode();          // calcule dégâts et knockback
+        explosion.finalizeExplosion(true); // applique visuellement
+
+        // 🧱 Casse manuelle additionnelle (si activé)
         if (breakBlocks) {
             int r = (int) Math.ceil(blockRadius);
             BlockPos.Mutable pos = new BlockPos.Mutable();
@@ -205,7 +229,7 @@ public class TimerBimItem extends Item {
                 for (int dy = -r; dy <= r; dy++) {
                     for (int dz = -r; dz <= r; dz++) {
                         pos.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
-                        double dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
                         if (dist <= blockRadius && !sw.isEmptyBlock(pos)) {
                             sw.destroyBlock(pos, true);
                         }
@@ -214,24 +238,10 @@ public class TimerBimItem extends Item {
             }
         }
 
-        // 💀 Dégâts entités (ignore ItemEntity)
-        AxisAlignedBB area = new AxisAlignedBB(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius);
-        List<Entity> entities = sw.getEntities((Entity) null, area, e -> e.isAlive() && !(e instanceof ItemEntity));
-        for (Entity e : entities) {
-            if (e instanceof LivingEntity) {
-                LivingEntity le = (LivingEntity)e;
-                double dist = Math.sqrt(le.distanceToSqr(x, y, z));
-                if (dist <= radius) {
-                    float dmg = (float)(8.0 * (1.0 - dist / radius));
-                    le.hurt(DamageSource.explosion((Explosion) null), dmg * 2.0F);
-                }
-            }
-        }
-
-        // 🔥 Feu optionnel
+        // 🔥 Feu optionnel (au sol)
         if (fire) {
             BlockPos.Mutable bp = new BlockPos.Mutable();
-            int fr = (int)Math.ceil(radius / 2);
+            int fr = (int) Math.ceil(radius / 2);
             for (int dx = -fr; dx <= fr; dx++) {
                 for (int dz = -fr; dz <= fr; dz++) {
                     bp.set(center.getX() + dx, center.getY(), center.getZ() + dz);
@@ -244,6 +254,10 @@ public class TimerBimItem extends Item {
 
         // 🪙 Protection des items drop
         if (noItemDestroy) {
+            AxisAlignedBB area = new AxisAlignedBB(
+                    x - radius, y - radius, z - radius,
+                    x + radius, y + radius, z + radius
+            );
             List<ItemEntity> items = sw.getEntitiesOfClass(ItemEntity.class, area);
             for (ItemEntity it : items) {
                 it.setInvulnerable(true);
