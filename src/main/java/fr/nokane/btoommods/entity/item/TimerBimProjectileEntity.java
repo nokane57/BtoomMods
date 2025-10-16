@@ -245,11 +245,11 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         ItemStack stack = new ItemStack(ModItems.TIMER_BIM.get());
         CompoundNBT tag = stack.getOrCreateTag();
         tag.putBoolean(TimerBimItem.NBT_ACTIVE, this.isActive());
-        tag.putBoolean(TimerBimItem.NBT_HAS_STARTED, this.hasStarted());
+        tag.putBoolean(TimerBimItem.NBT_HAS_STARTED, true);
         tag.putInt(TimerBimItem.NBT_REMAINING, Math.max(0, this.getRemainingTicks()));
         stack.setTag(tag);
 
-        // 🛰️ Synchronisation immédiate avec le client avant ajout à l’inventaire
+        // 🛰️ Synchronisation immédiate du timer avant ajout
         Net.CH.send(PacketDistributor.PLAYER.with(() -> (net.minecraft.entity.player.ServerPlayerEntity) player),
                 new TimerItemSyncS2C(-1, this.getRemainingTicks()));
 

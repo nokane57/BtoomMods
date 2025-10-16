@@ -12,7 +12,6 @@ import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
@@ -23,7 +22,8 @@ import net.minecraftforge.fml.common.Mod;
  * 🎯 HUD du Timer BIM :
  * - Affiche un compte à rebours fluide (avec décimales).
  * - Priorité : projectile > item au sol > inventaire/main.
- * - Reste fluide pendant les transitions (main ↔ drop ↔ tir).
+ * - Reste visible et fluide lors d’un drop.
+ * - S’efface instantanément à l’explosion (affiche 0.0 juste avant).
  */
 @Mod.EventBusSubscriber(value = Dist.CLIENT)
 public class TimerHudOverlay extends AbstractGui {
@@ -32,7 +32,6 @@ public class TimerHudOverlay extends AbstractGui {
             new ResourceLocation(Btoommods.MOD_ID, "textures/gui/timer_hud.png");
 
     private static double lastRemaining = -1;
-    private static long lastTick = -1;
     private static long lostSinceTick = -1;
     private static boolean justExploded = false;
     private static long explosionTick = 0;
@@ -64,15 +63,7 @@ public class TimerHudOverlay extends AbstractGui {
         if (justExploded && gameTick - explosionTick < 3) return;
         justExploded = false;
 
-        // 🕓 Simulation fluide client-side pendant le drop (si pas encore mis à jour serveur)
-        if (currentEntity instanceof ItemEntity && remaining > 0 && lastRemaining > 0) {
-            if (lastTick > 0) {
-                long deltaTicks = gameTick - lastTick;
-                remaining = Math.max(0.0, lastRemaining - (deltaTicks / 20.0));
-            }
-        }
-
-        // 🎯 Si on vient de perdre la référence, conserve 0.5 s la dernière valeur
+        // 🎯 Si on vient de drop, conserve la dernière valeur pendant 0.5s (10 ticks)
         if (remaining < 0 && lastRemaining > 0 &&
                 (lostSinceTick == -1 || gameTick - lostSinceTick <= 10)) {
             remaining = Math.max(0.0, lastRemaining - (gameTick - lostSinceTick) / 20.0);
@@ -82,12 +73,14 @@ public class TimerHudOverlay extends AbstractGui {
             return;
         }
 
-        if (currentEntity != null) lostSinceTick = -1;
-        else if (lostSinceTick == -1) lostSinceTick = gameTick;
+        if (currentEntity != null) {
+            lostSinceTick = -1;
+        } else if (lostSinceTick == -1) {
+            lostSinceTick = gameTick;
+        }
 
         // ✅ Sauvegarde dernière valeur connue
         lastRemaining = remaining;
-        lastTick = gameTick;
 
         // --- Dessin du HUD ---
         int screenW = mc.getWindow().getGuiScaledWidth();
@@ -153,6 +146,7 @@ public class TimerHudOverlay extends AbstractGui {
     /** ⏱️ Retourne le temps restant précis */
     private static double detectRemainingSeconds(Minecraft mc, Entity entity) {
         if (entity == null) return -1;
+
         int ticks = 0;
 
         if (entity instanceof TimerBimProjectileEntity) {
@@ -160,18 +154,7 @@ public class TimerHudOverlay extends AbstractGui {
             if (proj.hasExplodedClientSide()) return -1;
             ticks = proj.getRemainingTicks();
         } else if (entity instanceof ItemEntity) {
-            ItemEntity item = (ItemEntity) entity;
-            ItemStack stack = item.getItem();
-            CompoundNBT tag = stack.getTag();
-
-            // 🔁 Lecture prioritaire du NBT réel
-            if (tag != null && tag.contains(TimerBimItem.NBT_REMAINING)) {
-                ticks = tag.getInt(TimerBimItem.NBT_REMAINING);
-            } else if (item.getPersistentData().contains("RemainingTicks")) {
-                ticks = item.getPersistentData().getInt("RemainingTicks");
-            } else if (lastRemaining > 0) {
-                ticks = (int) Math.ceil(lastRemaining * 20);
-            }
+            ticks = ((ItemEntity) entity).getPersistentData().getInt("RemainingTicks");
         } else if (entity == mc.player) {
             for (ItemStack stack : mc.player.inventory.items) {
                 if (stack.getItem() instanceof TimerBimItem) {

@@ -8,7 +8,6 @@ import net.minecraft.client.audio.SimpleSound;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompoundNBT;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -18,7 +17,7 @@ import net.minecraftforge.fml.common.Mod;
  * 🎧 TimerTickClient — Gestion du son du Timer BIM :
  * - Bip par seconde, même pendant un drop.
  * - Synchronisé avec le HUD.
- * - Continue de descendre localement pendant les transitions.
+ * - Ne spamme plus à la transition inventaire → sol.
  */
 @Mod.EventBusSubscriber(value = Dist.CLIENT)
 public class TimerTickClient {
@@ -38,10 +37,9 @@ public class TimerTickClient {
         Entity entity = detectActiveTimerEntity(mc);
         int secs = detectRemainingSeconds(mc, entity);
 
-        // 🔄 Continue localement pendant le drop
+        // 🔄 Garde le son pendant 0.5s après drop
         if (secs < 0 && lastSeconds > 0 && (lostSinceTick == -1 || currentTick - lostSinceTick <= 10)) {
-            long delta = currentTick - lostSinceTick;
-            secs = Math.max(0, lastSeconds - (int) Math.floor(delta / 20.0));
+            secs = lastSeconds - 1;
         } else if (secs < 0) {
             lastSeconds = -1;
             lostSinceTick = -1;
@@ -97,19 +95,9 @@ public class TimerTickClient {
 
         if (entity instanceof TimerBimProjectileEntity)
             ticks = ((TimerBimProjectileEntity) entity).getRemainingTicks();
-        else if (entity instanceof ItemEntity) {
-            ItemEntity item = (ItemEntity) entity;
-            ItemStack stack = item.getItem();
-            CompoundNBT tag = stack.getTag();
-
-            if (tag != null && tag.contains(TimerBimItem.NBT_REMAINING)) {
-                ticks = tag.getInt(TimerBimItem.NBT_REMAINING);
-            } else if (item.getPersistentData().contains("RemainingTicks")) {
-                ticks = item.getPersistentData().getInt("RemainingTicks");
-            } else if (lastSeconds > 0) {
-                ticks = lastSeconds * 20;
-            }
-        } else if (entity == mc.player) {
+        else if (entity instanceof ItemEntity)
+            ticks = ((ItemEntity) entity).getPersistentData().getInt("RemainingTicks");
+        else if (entity == mc.player) {
             for (ItemStack stack : mc.player.inventory.items) {
                 if (stack.getItem() instanceof TimerBimItem) {
                     boolean active = stack.getOrCreateTag().getBoolean(TimerBimItem.NBT_ACTIVE);
