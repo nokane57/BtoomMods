@@ -56,6 +56,13 @@ public class GasBimItem extends Item {
 
         SoundUtils.playWorldSound(level, player.getX(), player.getY(), player.getZ(),
                 PI_ITEM.get(), 1.3F, 1.0F);
+
+        int cooldown = ModConfigs.GAS.COOLDOWN_TICKS.get();
+        player.getCooldowns().addCooldown(this, cooldown);
+
+        if (!level.isClientSide)
+            player.getPersistentData().putInt("gas_bim_cooldown", cooldown);
+
         player.awardStat(Stats.ITEM_USED.get(this));
         if (!player.abilities.instabuild) stack.shrink(1);
     }

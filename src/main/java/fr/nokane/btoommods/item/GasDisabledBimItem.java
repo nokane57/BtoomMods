@@ -64,8 +64,11 @@ public class GasDisabledBimItem extends Item {
             }
         }
 
-        SoundUtils.playWorldSound(level, player.getX(), player.getY(), player.getZ(),
-                PI_ITEM.get(), 1.2F, 1.0F);
+        int cooldown = ModConfigs.GAS_DISABLED.COOLDOWN_TICKS.get();
+        player.getCooldowns().addCooldown(this, cooldown);
+
+        if (!level.isClientSide)
+            player.getPersistentData().putInt("gas_disabled_bim_cooldown", cooldown);
 
         player.awardStat(Stats.ITEM_USED.get(this));
         if (!player.abilities.instabuild) stack.shrink(1);

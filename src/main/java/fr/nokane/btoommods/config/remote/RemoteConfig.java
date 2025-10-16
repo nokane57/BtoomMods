@@ -22,6 +22,7 @@ public class RemoteConfig {
     // 🆕 Nouveaux paramètres
     public final ForgeConfigSpec.BooleanValue REMOTE_NO_ITEM_DESTROY;
     public final ForgeConfigSpec.DoubleValue REMOTE_BREAK_RADIUS;
+    public final ForgeConfigSpec.IntValue COOLDOWN_TICKS;
 
     public RemoteConfig(ForgeConfigSpec.Builder b) {
         b.push("remote_bim");
@@ -97,6 +98,11 @@ public class RemoteConfig {
                 "FR: Si vrai, les explosions du Remote BIM ne détruisent jamais les items drop.",
                 "EN: If true, Remote BIM explosions never destroy dropped items."
         ).define("no_item_destroy", true);
+
+        COOLDOWN_TICKS = b.comment(
+                "FR: Délai (en ticks) entre deux tirs du Cracker BIM (20 = 1 seconde).",
+                "EN: Cooldown in ticks between two Cracker BIM throws (20 = 1 second)."
+        ).defineInRange("cooldown_ticks", 20, 0, 200);
 
         b.pop();
     }

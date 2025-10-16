@@ -31,6 +31,7 @@ public class GasConfig {
 
     // ✅ Nouvelle config : vitesse de propagation
     public final ForgeConfigSpec.DoubleValue GAS_SPREAD_SPEED;
+    public final ForgeConfigSpec.IntValue COOLDOWN_TICKS;
 
     public GasConfig(ForgeConfigSpec.Builder b) {
         b.push("gas_bim");
@@ -81,6 +82,11 @@ public class GasConfig {
 
         GAS_SPREAD_SPEED = b.comment("Vitesse de propagation du nuage de gaz (1.0 = normal).")
                 .defineInRange("spread_speed", 1.0D, 0.1D, 10.0D);
+
+        COOLDOWN_TICKS = b.comment(
+                "FR: Délai (en ticks) entre deux tirs du Cracker BIM (20 = 1 seconde).",
+                "EN: Cooldown in ticks between two Cracker BIM throws (20 = 1 second)."
+        ).defineInRange("cooldown_ticks", 20, 0, 200);
 
         b.pop();
     }

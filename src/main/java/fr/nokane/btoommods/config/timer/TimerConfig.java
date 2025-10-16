@@ -28,6 +28,7 @@ public class TimerConfig {
 
     // ---- Dégâts ----
     public final ForgeConfigSpec.DoubleValue IMPACT_HEARTS;
+    public final ForgeConfigSpec.IntValue COOLDOWN_TICKS;
 
     public TimerConfig(ForgeConfigSpec.Builder b) {
         b.comment("Configuration du Timer BIM").push("timer");
@@ -91,6 +92,11 @@ public class TimerConfig {
         // --- Dégâts ---
         IMPACT_HEARTS = b.comment("Dégâts (en cœurs) infligés à l'impact du projectile.")
                 .defineInRange("impact_hearts", 1.0D, 0.0D, 50.0D);
+
+        COOLDOWN_TICKS = b.comment(
+                "FR: Délai (en ticks) entre deux tirs du Cracker BIM (20 = 1 seconde).",
+                "EN: Cooldown in ticks between two Cracker BIM throws (20 = 1 second)."
+        ).defineInRange("cooldown_ticks", 20, 0, 200);
 
         b.pop();
     }

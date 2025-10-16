@@ -63,6 +63,12 @@ public class TimerBimItem extends Item {
         proj.shootFromRotation(player, player.xRot, player.yRot, 0.0f, velocity, 0.9f);
         world.addFreshEntity(proj);
 
+        int cooldown = ModConfigs.TIMER.COOLDOWN_TICKS.get();
+        player.getCooldowns().addCooldown(this, cooldown);
+
+        if (!world.isClientSide)
+            player.getPersistentData().putInt("timer_cooldown", cooldown);
+
         if (!player.abilities.instabuild) stack.shrink(1);
     }
 
