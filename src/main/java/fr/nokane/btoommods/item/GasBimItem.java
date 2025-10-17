@@ -16,11 +16,8 @@ public class GasBimItem extends Item {
 
     public GasBimItem(Properties props) { super(props); }
 
-    @Override
-    public UseAction getUseAnimation(ItemStack s) { return UseAction.BOW; }
-
-    @Override
-    public int getUseDuration(ItemStack s) { return 72000; }
+    @Override public UseAction getUseAnimation(ItemStack s) { return UseAction.BOW; }
+    @Override public int getUseDuration(ItemStack s) { return 72000; }
 
     @Override
     public ActionResult<ItemStack> use(World level, PlayerEntity player, Hand hand) {
@@ -36,7 +33,6 @@ public class GasBimItem extends Item {
 
         int used = this.getUseDuration(stack) - timeLeft;
         float power = Math.min(1.0f, used / 20.0f);
-
         if (power < 0.1f) return;
 
         if (!level.isClientSide) {
@@ -46,7 +42,6 @@ public class GasBimItem extends Item {
                 proj.setItem(stack.copy());
                 proj.setPos(player.getX(), player.getEyeY() - 0.1D, player.getZ());
 
-                // ⚙️ vitesse identique au Timer BIM
                 float velocity = (float) (1.7f * power * ModConfigs.TIMER.VITESSE_PROJECTILE.get());
                 proj.shootFromRotation(player, player.xRot, player.yRot, 0.0F, velocity, 0.9F);
 
@@ -54,17 +49,13 @@ public class GasBimItem extends Item {
             }
         }
 
-        SoundUtils.playWorldSound(level, player.getX(), player.getY(), player.getZ(),
-                PI_ITEM.get(), 1.3F, 1.0F);
+        SoundUtils.playWorldSound(level, player.getX(), player.getY(), player.getZ(), PI_ITEM.get(), 1.3F, 1.0F);
 
         int cooldown = ModConfigs.GAS.COOLDOWN_TICKS.get();
         player.getCooldowns().addCooldown(this, cooldown);
-
-        if (!level.isClientSide)
-            player.getPersistentData().putInt("gas_bim_cooldown", cooldown);
+        if (!level.isClientSide) player.getPersistentData().putInt("gas_bim_cooldown", cooldown);
 
         player.awardStat(Stats.ITEM_USED.get(this));
         if (!player.abilities.instabuild) stack.shrink(1);
     }
-
 }
