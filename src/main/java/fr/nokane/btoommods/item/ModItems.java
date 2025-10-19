@@ -61,13 +61,8 @@ public class ModItems {
 
     // Radar implant
     public static final RegistryObject<Item> RADAR_ITEM = ITEMS.register("radar",
-            () -> new StackFromConfigItem(new Item.Properties().tab(ItemGroup.TAB_MISC),
-                    () -> ModConfigs.RADAR.STACK.get()) {
-                @Override
-                public boolean onDroppedByPlayer(ItemStack stack, PlayerEntity player) {
-                    return false; // indropable
-                }
-            });
+            () -> new RadarItem());
+
 
     // Timer BIM
     public static final RegistryObject<Item> TIMER_BIM = ITEMS.register("timer_bim",

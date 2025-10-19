@@ -102,6 +102,12 @@ public class RemoteBimItem extends Item {
         SoundUtils.playWorldSound(level, player.getX(), player.getY(), player.getZ(),
                 PI_ITEM.get(), 1.3F, 1.0F);
 
+        int cooldown = ModConfigs.REMOTE.COOLDOWN_TICKS.get();
+        player.getCooldowns().addCooldown(this, cooldown);
+
+        if (!level.isClientSide)
+            player.getPersistentData().putInt("remote_cooldown", cooldown);
+
         // Stat + retrait d’item
         player.awardStat(Stats.ITEM_USED.get(this));
         if (!player.abilities.instabuild) stack.shrink(1);

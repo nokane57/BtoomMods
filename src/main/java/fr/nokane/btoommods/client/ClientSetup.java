@@ -1,11 +1,9 @@
 package fr.nokane.btoommods.client;
 
 import fr.nokane.btoommods.Btoommods;
+import fr.nokane.btoommods.client.effects.RadarWaveEffect;
 import fr.nokane.btoommods.entity.ModEntities;
-import fr.nokane.btoommods.net.Net;
-import fr.nokane.btoommods.net.RadarScanC2S;
-import fr.nokane.btoommods.net.TimerKeyC2S;
-import fr.nokane.btoommods.net.RemoteTriggerC2S;
+import fr.nokane.btoommods.net.*;
 import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.SpriteRenderer;
@@ -21,6 +19,14 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import org.lwjgl.glfw.GLFW;
 
+/**
+ * 🎮 Configuration client :
+ * - Renders
+ * - Keybindings
+ * - Tick listeners
+ * - Glow management
+ * - Onde radar visuelle
+ */
 @Mod.EventBusSubscriber(modid = Btoommods.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
 public class ClientSetup {
 
@@ -31,51 +37,36 @@ public class ClientSetup {
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent e) {
         // === Renders ===
-        RenderingRegistry.registerEntityRenderingHandler(
-                ModEntities.CRACKER_BIM.get(),
-                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
-        );
-        RenderingRegistry.registerEntityRenderingHandler(
-                ModEntities.BLAZING_BIM.get(),
-                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
-        );
-        RenderingRegistry.registerEntityRenderingHandler(
-                ModEntities.BLAZING_FIRE_FIELD.get(),
-                EmptyRenderer::new
-        );
-        RenderingRegistry.registerEntityRenderingHandler(
-                ModEntities.GAS_BIM.get(),
-                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
-        );
-        RenderingRegistry.registerEntityRenderingHandler(
-                ModEntities.GAS_BIM_DISABLED.get(),
-                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
-        );
-        RenderingRegistry.registerEntityRenderingHandler(
-                ModEntities.GAS_CLOUD_FIELD.get(),
-                EmptyRenderer::new
-        );
-        RenderingRegistry.registerEntityRenderingHandler(
-                ModEntities.REMOTE_BIM.get(),
-                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
-        );
-        RenderingRegistry.registerEntityRenderingHandler(
-                ModEntities.TIMER_BIM_PROJECTILE.get(),
-                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer())
-        );
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.CRACKER_BIM.get(),
+                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer()));
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.BLAZING_BIM.get(),
+                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer()));
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.BLAZING_FIRE_FIELD.get(), EmptyRenderer::new);
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.GAS_BIM.get(),
+                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer()));
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.GAS_BIM_DISABLED.get(),
+                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer()));
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.GAS_CLOUD_FIELD.get(), EmptyRenderer::new);
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.REMOTE_BIM.get(),
+                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer()));
+        RenderingRegistry.registerEntityRenderingHandler(ModEntities.TIMER_BIM_PROJECTILE.get(),
+                mgr -> new SpriteRenderer<>(mgr, Minecraft.getInstance().getItemRenderer()));
 
         // === Keybindings ===
-        RADAR_KEY        = new KeyBinding("key.btoommods.radar",           GLFW.GLFW_KEY_R, "key.categories.btoommods");
-        REMOTE_GUI_KEY   = new KeyBinding("key.btoommods.remote_bracelet", GLFW.GLFW_KEY_B, "key.categories.btoommods");
-        TIMER_TOGGLE_KEY = new KeyBinding("key.btoommods.timer_toggle",    GLFW.GLFW_KEY_G, "key.categories.btoommods");
+        RADAR_KEY = new KeyBinding("key.btoommods.radar", GLFW.GLFW_KEY_R, "key.categories.btoommods");
+        REMOTE_GUI_KEY = new KeyBinding("key.btoommods.remote_bracelet", GLFW.GLFW_KEY_B, "key.categories.btoommods");
+        TIMER_TOGGLE_KEY = new KeyBinding("key.btoommods.timer_toggle", GLFW.GLFW_KEY_G, "key.categories.btoommods");
 
         ClientRegistry.registerKeyBinding(RADAR_KEY);
         ClientRegistry.registerKeyBinding(REMOTE_GUI_KEY);
         ClientRegistry.registerKeyBinding(TIMER_TOGGLE_KEY);
 
-        GlowClient.install();
+        // === Install Glow systems ===
+        GlowClient.install();       // 🔴 Remotes / BIMs
+        RadarGlowClient.install();  // 🟢 Radar
+        RadarWaveEffect.install();  // 🌊 Onde radar (particules)
 
-        // === Tick client ===
+        // === Tick listener ===
         MinecraftForge.EVENT_BUS.addListener(ClientSetup::onClientTick);
     }
 
@@ -88,9 +79,16 @@ public class ClientSetup {
         // === Radar ===
         while (RADAR_KEY.consumeClick()) {
             Net.CH.sendToServer(new RadarScanC2S());
+
+            // 🌊 Onde radar visuelle côté client (preview instantanée)
+            double x = mc.player.getX();
+            double y = mc.player.getY() + mc.player.getBbHeight() * 0.5;
+            double z = mc.player.getZ();
+            RadarWaveEffect.trigger(x, y, z, 80, 40); // rayon / durée par défaut
+            SoundUtils.playClac();
         }
 
-        // === Ouvrir le GUI du bracelet (main principale) ===
+        // === Bracelet GUI ===
         while (REMOTE_GUI_KEY.consumeClick()) {
             mc.setScreen(new fr.nokane.btoommods.client.screen.RemoteBraceletScreen());
         }
@@ -100,7 +98,7 @@ public class ClientSetup {
             Net.CH.sendToServer(new TimerKeyC2S(TimerKeyC2S.Action.TOGGLE));
         }
 
-        // === Activation directe via touches 1–8 si bracelet dans la main secondaire ===
+        // === Remote bracelet (touches 1–8) ===
         ItemStack off = mc.player.getOffhandItem();
         if (!off.isEmpty() && off.getItem() instanceof fr.nokane.btoommods.item.RemoteBraceletItem) {
             long window = mc.getWindow().getWindow();

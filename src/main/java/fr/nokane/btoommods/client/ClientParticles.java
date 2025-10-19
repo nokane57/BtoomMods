@@ -1,4 +1,3 @@
-// fr/nokane/btoommods/client/ClientParticles.java
 package fr.nokane.btoommods.client;
 
 import fr.nokane.btoommods.particle.ModParticles;

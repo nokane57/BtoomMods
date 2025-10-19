@@ -22,7 +22,7 @@ import org.apache.logging.log4j.Logger;
 public class Btoommods {
 
     public static final String MOD_ID = "btoommods";
-    private static final Logger LOGGER = LogManager.getLogger();
+    public static final Logger LOGGER = LogManager.getLogger();
 
     public Btoommods() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();

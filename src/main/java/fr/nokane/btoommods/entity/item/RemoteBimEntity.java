@@ -4,6 +4,7 @@ import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.net.GlowS2C;
 import fr.nokane.btoommods.net.Net;
+import fr.nokane.btoommods.net.RemoteOwnerMarkerS2C;
 import net.minecraft.entity.*;
 import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.entity.player.ServerPlayerEntity;
@@ -29,9 +30,9 @@ public class RemoteBimEntity extends ProjectileItemEntity {
 
     private static final DataParameter<Integer> SLOT_ID = EntityDataManager.defineId(RemoteBimEntity.class, DataSerializers.INT);
     private static final DataParameter<Boolean> STUCK = EntityDataManager.defineId(RemoteBimEntity.class, DataSerializers.BOOLEAN);
-
     private static final double SNEAK_RECALL_RADIUS = 1.5D;
     private static final int SNEAK_RECALL_MIN_AGE = 10;
+
     private int ownerMarkerCooldown = 0;
 
     public RemoteBimEntity(EntityType<? extends RemoteBimEntity> type, World level) {
@@ -72,6 +73,28 @@ public class RemoteBimEntity extends ProjectileItemEntity {
     }
 
     @Override
+    public boolean shouldRenderAtSqrDistance(double dist) {
+        // ✅ Force le rendu jusqu’à ~400 blocs (400 * 400 = 160000)
+        // ou même plus si tu veux le voir à l’infini
+        return dist < 400 * 400;
+    }
+
+
+
+    // --- ces trois méthodes NE doivent PAS avoir @Override en 1.16.5 ---
+    public boolean shouldRenderName() {
+        return false;
+    }
+
+    public boolean isCurrentlyGlowing() {
+        return false;
+    }
+
+    public boolean shouldBeSaved() {
+        return false;
+    }
+
+    @Override
     public void tick() {
         super.tick();
 
@@ -82,13 +105,22 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             this.setPos(this.getX(), this.getY(), this.getZ());
 
             if (!level.isClientSide) {
-                if (getOwner() instanceof ServerPlayerEntity) {
-                    ServerPlayerEntity sp = (ServerPlayerEntity) getOwner();
+                Entity owner = this.getOwner();
+                if (owner instanceof ServerPlayerEntity) {
+                    ServerPlayerEntity sp = (ServerPlayerEntity) owner;
                     if (ownerMarkerCooldown-- <= 0) {
                         ownerMarkerCooldown = 40;
                         int slot = getSlot();
                         int color = getServerSlotColor(slot);
-                        Net.toPlayer(sp, new GlowS2C(45, new int[]{this.getId()}, color));
+
+                        // ✅ Glow visible uniquement pour le propriétaire
+                        Net.toPlayer(sp, new GlowS2C(60, new int[]{this.getId()}, color));
+
+                        // ✅ Si le joueur est loin, afficher un repère de particules
+                        double distSqr = sp.distanceToSqr(this);
+                        if (distSqr > 50 * 50) {
+                            Net.toPlayer(sp, new RemoteOwnerMarkerS2C(this.getX(), this.getY() + 0.2, this.getZ()));
+                        }
                     }
                 }
                 tryOwnerSneakPickup();
@@ -103,9 +135,7 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         }
     }
 
-    /** Renvoie une couleur unique pour le slot (serveur safe, pas de classe client). */
     private int getServerSlotColor(int slot) {
-        // Palette serveur fallback (même ordre que le bracelet)
         int[] colors = {
                 0xFF3C3C, 0xFF8800, 0xFFD700, 0x00FF00,
                 0x00FFFF, 0x0066FF, 0xAA00FF, 0xFF00AA
@@ -127,7 +157,6 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             this.setDeltaMovement(Vector3d.ZERO);
             this.noPhysics = true;
             this.setStuck(true);
-            this.setInvisible(false);
         } else if (hit.getType() == RayTraceResult.Type.ENTITY) {
             onHitEntity((EntityRayTraceResult) hit);
         }
@@ -141,7 +170,6 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         this.setDeltaMovement(Vector3d.ZERO);
         this.noPhysics = true;
         this.setStuck(true);
-        this.setInvisible(false);
     }
 
     public void detonateNow() {
@@ -154,7 +182,8 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         boolean noItemDestroy = ModConfigs.REMOTE.REMOTE_NO_ITEM_DESTROY.get();
         double blockBreakRadius = ModConfigs.REMOTE.REMOTE_BREAK_RADIUS.get();
 
-        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 0.7F, 0.9F + sw.random.nextFloat() * 0.2F);
+        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS,
+                0.7F, 0.9F + sw.random.nextFloat() * 0.2F);
         sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, getX(), getY(), getZ(), 1, 0, 0, 0, 0);
 
         if (breakBlocks) {
@@ -163,10 +192,9 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             for (int x = -r; x <= r; x++) for (int y = -r; y <= r; y++) for (int z = -r; z <= r; z++) {
                 pos.set(center.getX() + x, center.getY() + y, center.getZ() + z);
                 double d = Math.sqrt(x * x + y * y + z * z);
-                if (d <= blockBreakRadius) {
-                    if (!sw.isEmptyBlock(pos) && sw.getBlockState(pos).getExplosionResistance(sw, pos, null) < 200.0F) {
-                        sw.destroyBlock(pos, true);
-                    }
+                if (d <= blockBreakRadius && !sw.isEmptyBlock(pos)
+                        && sw.getBlockState(pos).getExplosionResistance(sw, pos, null) < 200.0F) {
+                    sw.destroyBlock(pos, true);
                 }
             }
         }
@@ -174,10 +202,19 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         AxisAlignedBB aabb = new AxisAlignedBB(getX() - radius, getY() - radius, getZ() - radius,
                 getX() + radius, getY() + radius, getZ() + radius);
 
-        LivingEntity ownerLE = (getOwner() instanceof LivingEntity) ? (LivingEntity) getOwner() : null;
+        LivingEntity ownerLE = null;
+        if (this.getOwner() instanceof LivingEntity)
+            ownerLE = (LivingEntity) this.getOwner();
+
         DamageSource src = DamageSource.explosion(ownerLE);
 
-        List<Entity> list = sw.getEntities(this, aabb, e -> e.isAlive() && (!(e instanceof ItemEntity) || !noItemDestroy));
+        List<Entity> list = sw.getEntities(this, aabb, new java.util.function.Predicate<Entity>() {
+            @Override
+            public boolean test(Entity e) {
+                return e.isAlive() && (!(e instanceof ItemEntity) || !noItemDestroy);
+            }
+        });
+
         for (Entity e : list) {
             if (e instanceof LivingEntity) {
                 double d = Math.sqrt(e.distanceToSqr(this));
@@ -191,8 +228,9 @@ public class RemoteBimEntity extends ProjectileItemEntity {
     }
 
     private boolean tryOwnerSneakPickup() {
-        if (!(getOwner() instanceof ServerPlayerEntity)) return false;
-        ServerPlayerEntity sp = (ServerPlayerEntity) getOwner();
+        Entity owner = this.getOwner();
+        if (!(owner instanceof ServerPlayerEntity)) return false;
+        ServerPlayerEntity sp = (ServerPlayerEntity) owner;
         if (!sp.isShiftKeyDown() || this.tickCount < SNEAK_RECALL_MIN_AGE) return false;
         if (this.distanceToSqr(sp) > SNEAK_RECALL_RADIUS * SNEAK_RECALL_RADIUS) return false;
 
@@ -216,25 +254,19 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         setStuck(nbt.getBoolean("Stuck"));
     }
 
-    /** 🔢 Assigne automatiquement un slot libre (1-8) pour le joueur propriétaire */
     public void assignSlotAuto() {
-        if (!(level instanceof ServerWorld)) {
-            setSlot(1);
-            return;
-        }
-
-        UUID me = (getOwner() != null ? getOwner().getUUID() : new UUID(0, 0));
+        if (!(level instanceof ServerWorld)) { setSlot(1); return; }
         ServerWorld sw = (ServerWorld) level;
-
+        UUID me = (getOwner() != null ? getOwner().getUUID() : new UUID(0, 0));
         int scan = ModConfigs.REMOTE.REMOTE_SCAN_RADIUS.get();
-        AxisAlignedBB box = new AxisAlignedBB(
-                getX() - scan, getY() - scan, getZ() - scan,
-                getX() + scan, getY() + scan, getZ() + scan
-        );
+
+        AxisAlignedBB box = new AxisAlignedBB(getX() - scan, getY() - scan, getZ() - scan,
+                getX() + scan, getY() + scan, getZ() + scan);
 
         Set<Integer> taken = new HashSet<>();
         for (RemoteBimEntity e : sw.getEntitiesOfClass(RemoteBimEntity.class, box)) {
-            if (e.getOwner() != null && e.getOwner().getUUID().equals(me)) {
+            Entity eo = e.getOwner();
+            if (eo != null && eo.getUUID().equals(me)) {
                 taken.add(e.getSlot());
             }
         }
@@ -245,11 +277,8 @@ public class RemoteBimEntity extends ProjectileItemEntity {
                 return;
             }
         }
-
-        // Si tous les slots sont pris, revient au premier
         setSlot(1);
     }
-
 
     @Override
     public IPacket<?> getAddEntityPacket() {

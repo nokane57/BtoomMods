@@ -2,131 +2,173 @@ package fr.nokane.btoommods.net;
 
 import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.item.ModItems;
-import fr.nokane.btoommods.radar.RadarCapability;
-import fr.nokane.btoommods.radar.RadarData;
+import fr.nokane.btoommods.radar.RadarStorage;
 import fr.nokane.btoommods.sound.SoundUtils;
+import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.entity.player.ServerPlayerEntity;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.math.vector.Vector3d;
+import net.minecraft.util.Util;
+import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraft.util.text.TranslationTextComponent;
+import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.server.ServerWorld;
-import net.minecraftforge.fml.network.NetworkEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.network.PacketDistributor;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.function.Supplier;
 
 public class RadarScanC2S {
 
+    private static final List<ActiveRadarWave> ACTIVE_WAVES = new ArrayList<>();
+
     public static void encode(RadarScanC2S msg, net.minecraft.network.PacketBuffer buf) {}
     public static RadarScanC2S decode(net.minecraft.network.PacketBuffer buf) { return new RadarScanC2S(); }
 
-    public static void handle(RadarScanC2S msg, Supplier<NetworkEvent.Context> ctx) {
-        NetworkEvent.Context context = ctx.get();
-        context.enqueueWork(() -> {
-
-            ServerPlayerEntity player = context.getSender();
+    public static void handle(RadarScanC2S msg, Supplier<net.minecraftforge.fml.network.NetworkEvent.Context> ctx) {
+        ctx.get().enqueueWork(() -> {
+            ServerPlayerEntity player = ctx.get().getSender();
             if (player == null) return;
 
-            player.getCapability(RadarCapability.CAP).ifPresent(data -> {
-                if (!data.hasImplant()) return;
+            ServerWorld world = player.getLevel();
+            int totalRadars = RadarStorage.get(player);
+            if (totalRadars <= 0) return;
 
-                ServerWorld world = player.getLevel();
-                long now = world.getGameTime();
+            int base = ModConfigs.RADAR.RADAR_BASE_RADIUS.get();
+            int per = ModConfigs.RADAR.RADAR_EXTRA_PER_ITEM.get();
+            int radius = base + totalRadars * per;
+            int duration = ModConfigs.RADAR.RADAR_WAVE_DURATION.get() + totalRadars * 5;
+            int glowTicks = ModConfigs.RADAR.RADAR_GLOW_TICKS.get();
+            boolean ignoreSneak = ModConfigs.RADAR.RADAR_IGNORE_SNEAK.get();
 
-                // 🕒 cooldown individuel
-                if (now < data.getCooldownUntil()) return;
-                data.setCooldownUntil(now + ModConfigs.RADAR.RADAR_COOLDOWN_TICKS.get());
+            SoundUtils.playWorldSound(world, player.getX(), player.getY(), player.getZ(),
+                    fr.nokane.btoommods.sound.ModSounds.SONAR_ITEM.get(),
+                    SoundUtils.VOL_SONAR, 1.0F);
 
-                // 🛰️ Vérifie nombre réel de radars dans l’inventaire (sécurité)
-                int boosters = player.inventory.items.stream()
-                        .filter(s -> !s.isEmpty() && s.getItem() == ModItems.RADAR_ITEM.get())
-                        .mapToInt(ItemStack::getCount)
-                        .sum();
+            Net.CH.send(PacketDistributor.PLAYER.with(() -> player),
+                    new RadarWaveS2C(player.getX(), player.getY(), player.getZ(), radius, duration));
 
-                // 📡 Rayon de détection
-                int baseRadius = ModConfigs.RADAR.RADAR_BASE_RADIUS.get();
-                int extraPerItem = ModConfigs.RADAR.RADAR_EXTRA_PER_ITEM.get();
-
-                // ✅ 1 radar = baseRadius ; chaque radar supplémentaire = +extraPerItem
-                int radius = baseRadius + Math.max(0, boosters - 1) * extraPerItem;
-                double radiusSq = radius * radius;
-
-                int glowTicks = ModConfigs.RADAR.RADAR_GLOW_TICKS.get();
-                int activeWindow = ModConfigs.RADAR.RADAR_ACTIVE_WINDOW.get();
-
-                final double EPS_DIST = 0.0125;
-                final double EPS_VEL = 0.0125;
-
-                List<ServerPlayerEntity> detectedPlayers = new ArrayList<>();
-
-                // 🔁 Utilise uniquement les joueurs dans le même monde
-                for (ServerPlayerEntity other : world.players()) {
-                    if (other == null || other.isSpectator()) continue;
-                    if (player.distanceToSqr(other) > radiusSq) continue;
-
-                    boolean isScanner = other == player;
-
-                    // 👀 sneaks non détectés sauf si scanneur
-                    if (other.isCrouching() && !isScanner) continue;
-
-                    // 💤 AFK check
-                    boolean movingNow = isMovingForwardBackward(other, EPS_DIST, EPS_VEL);
-                    boolean recentlyActive = other.getCapability(RadarCapability.CAP)
-                            .map(RadarData::getLastMoveTick)
-                            .map(t -> now - t <= activeWindow)
-                            .orElse(false);
-
-                    if (!(movingNow || recentlyActive) && !isScanner) continue;
-
-                    detectedPlayers.add(other);
-                }
-
-                // 🔊 Son du scan
-                SoundUtils.playWorldSound(world,
-                        player.getX(), player.getY(), player.getZ(),
-                        fr.nokane.btoommods.sound.ModSounds.SONAR_ITEM.get(),
-                        SoundUtils.VOL_SONAR, 1.0F);
-
-                // ✨ Le scanneur se voit toujours lui-même
-                if (!detectedPlayers.contains(player)) detectedPlayers.add(player);
-
-                // 1️⃣ Envoi au scanneur (voit tout)
-                int[] idsForScanner = detectedPlayers.stream()
-                        .mapToInt(ServerPlayerEntity::getId)
-                        .toArray();
-                Net.CH.send(PacketDistributor.PLAYER.with(() -> player),
-                        new GlowS2C(glowTicks, idsForScanner, 0x00FF00));
-
-                // 2️⃣ Envoi aux cibles (voient le scanneur)
-                for (ServerPlayerEntity target : detectedPlayers) {
-                    if (target == player) continue;
-                    Net.CH.send(PacketDistributor.PLAYER.with(() -> target),
-                            new GlowS2C(glowTicks, new int[]{player.getId()}, 0x00FF00));
-                }
-
-                // 🧭 Debug console serveur
-                System.out.printf("[RADAR] %s -> radius=%d, boosters=%d, detected=%d%n",
-                        player.getName().getString(), radius, boosters, detectedPlayers.size());
-            });
+            ACTIVE_WAVES.add(new ActiveRadarWave(world, player, radius, duration, glowTicks, ignoreSneak));
         });
-        context.setPacketHandled(true);
+        ctx.get().setPacketHandled(true);
     }
 
-    /** Vérifie si le joueur bouge vers l’avant ou l’arrière */
-    private static boolean isMovingForwardBackward(ServerPlayerEntity p, double epsDist, double epsVel) {
-        Vector3d look = p.getLookAngle();
-        double lx = look.x, lz = look.z;
-        double ll = Math.hypot(lx, lz);
-        if (ll < 1.0E-6) { lx = 0; lz = 0; ll = 1.0; }
+    static { MinecraftForge.EVENT_BUS.register(RadarScanC2S.class); }
 
-        double dx = p.getX() - p.xOld;
-        double dz = p.getZ() - p.zOld;
-        double alongDist = (dx * lx + dz * lz) / ll;
+    @SubscribeEvent
+    public static void onServerTick(TickEvent.ServerTickEvent e) {
+        if (e.phase != TickEvent.Phase.END || ACTIVE_WAVES.isEmpty()) return;
+        ACTIVE_WAVES.removeIf(w -> !w.tick());
+    }
 
-        Vector3d v = p.getDeltaMovement();
-        double alongVel = (v.x * lx + v.z * lz) / ll;
+    private static class ActiveRadarWave {
+        private final ServerWorld world;
+        private final ServerPlayerEntity origin;
+        private final int maxRadius, duration, glowTicks;
+        private final boolean ignoreSneak;
+        private int age = 0;
 
-        return Math.abs(alongDist) > epsDist || Math.abs(alongVel) > epsVel;
+        // État : glowing / message déjà envoyé
+        private final Map<Integer, Boolean> entityGlowState = new HashMap<>();
+        private final Set<Integer> messagedEntities = new HashSet<>();
+
+        ActiveRadarWave(ServerWorld w, ServerPlayerEntity o, int r, int d, int g, boolean s) {
+            world = w;
+            origin = o;
+            maxRadius = r;
+            duration = d;
+            glowTicks = g;
+            ignoreSneak = s;
+        }
+
+        boolean tick() {
+            if (origin == null || !origin.isAlive() || ++age > duration) return false;
+
+            double progress = (double) age / duration;
+            double currentRadius = progress * maxRadius;
+            double radiusSq = currentRadius * currentRadius;
+
+            double glowRange = ModConfigs.RADAR.RADAR_GLOW_VISIBLE_RANGE.get();
+            double messageRange = ModConfigs.RADAR.RADAR_MESSAGE_RANGE.get();
+            double glowRangeSq = glowRange * glowRange;
+            double messageRangeSq = messageRange * messageRange;
+
+            // === Détection des joueurs ===
+            for (ServerPlayerEntity target : world.players()) {
+                if (target == null || target.isSpectator()) continue;
+                if (ignoreSneak && target.isCrouching() && target != origin) continue;
+
+                double distSq = origin.distanceToSqr(target);
+                if (distSq > radiusSq) continue;
+
+                boolean wasGlowing = entityGlowState.getOrDefault(target.getId(), false);
+                boolean shouldGlow = distSq <= glowRangeSq;
+
+                // 💚 Glow visible
+                if (!wasGlowing && shouldGlow) {
+                    Net.CH.send(PacketDistributor.PLAYER.with(() -> origin),
+                            new RadarGlowS2C(glowTicks, new int[]{target.getId()}));
+                    if (target != origin)
+                        Net.CH.send(PacketDistributor.PLAYER.with(() -> target),
+                                new RadarGlowS2C(glowTicks, new int[]{origin.getId()}));
+                    entityGlowState.put(target.getId(), true);
+                }
+
+                // 💬 Message unique au-delà du glow
+                else if (!shouldGlow && distSq <= messageRangeSq && !messagedEntities.contains(target.getId())) {
+                    double dist = Math.sqrt(distSq);
+                    origin.sendMessage(
+                            new TranslationTextComponent("message.btoommods.radar.detected_player",
+                                    target.getName().getString(), (int) dist,
+                                    (int) target.getX(), (int) target.getY(), (int) target.getZ())
+                                    .withStyle(TextFormatting.AQUA),
+                            Util.NIL_UUID);
+                    target.sendMessage(
+                            new TranslationTextComponent("message.btoommods.radar.alert_target",
+                                    origin.getName().getString(),
+                                    (int) origin.getX(), (int) origin.getY(), (int) origin.getZ())
+                                    .withStyle(TextFormatting.RED),
+                            Util.NIL_UUID);
+                    messagedEntities.add(target.getId());
+                }
+            }
+
+            // === Détection objets radar ===
+            double minY = Math.max(0, origin.getY() - currentRadius);
+            double maxY = Math.min(256, origin.getY() + currentRadius);
+            AxisAlignedBB box = new AxisAlignedBB(
+                    origin.getX() - currentRadius, minY, origin.getZ() - currentRadius,
+                    origin.getX() + currentRadius, maxY, origin.getZ() + currentRadius
+            );
+
+            for (ItemEntity item : world.getEntitiesOfClass(ItemEntity.class, box)) {
+                if (!item.isAlive() || item.getItem().isEmpty()) continue;
+                if (item.getItem().getItem() != ModItems.RADAR_ITEM.get()) continue;
+
+                double distSq = origin.distanceToSqr(item);
+                boolean wasGlowing = entityGlowState.getOrDefault(item.getId(), false);
+                boolean shouldGlow = distSq <= glowRangeSq;
+
+                if (!wasGlowing && shouldGlow) {
+                    Net.CH.send(PacketDistributor.PLAYER.with(() -> origin),
+                            new RadarGlowS2C(glowTicks, new int[]{item.getId()}));
+                    entityGlowState.put(item.getId(), true);
+                }
+                // 💬 Message unique pour chaque objet radar
+                else if (!shouldGlow && distSq <= messageRangeSq && !messagedEntities.contains(item.getId())) {
+                    double dist = Math.sqrt(distSq);
+                    origin.sendMessage(
+                            new TranslationTextComponent("message.btoommods.radar.detected_object",
+                                    (int) dist, (int) item.getX(), (int) item.getY(), (int) item.getZ())
+                                    .withStyle(TextFormatting.GRAY),
+                            Util.NIL_UUID);
+                    messagedEntities.add(item.getId());
+                }
+            }
+
+            return true;
+        }
     }
 }

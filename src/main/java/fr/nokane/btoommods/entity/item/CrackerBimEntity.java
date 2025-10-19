@@ -24,10 +24,8 @@ import java.util.List;
 /**
  * 💣 Cracker BIM — Projectile explosif :
  * - Explosion instantanée à l’impact
- * - Dégâts directs + dégâts d’épicentre configurables
- * - Dégâts de zone atténués
- * - Casse les blocs (optionnel)
- * - Ne détruit jamais les items si configuré
+ * - Rayon plus large mais dégâts modérés
+ * - Casse blocs et gère items selon la config
  */
 public class CrackerBimEntity extends ProjectileItemEntity {
 
@@ -51,14 +49,13 @@ public class CrackerBimEntity extends ProjectileItemEntity {
     public void tick() {
         super.tick();
 
-        // Gravité ajustée par le poids
         if (!this.isNoGravity()) {
             Vector3d vel = this.getDeltaMovement();
             double poids = ModConfigs.CRACKER.POIDS_PROJECTILE.get();
             this.setDeltaMovement(vel.x, vel.y - (0.04D * poids), vel.z);
         }
 
-        // Empêche l’enfoncement dans le sol
+        // Ajustement au sol
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -68,7 +65,7 @@ public class CrackerBimEntity extends ProjectileItemEntity {
             }
         }
 
-        // Suppression après un certain temps
+        // Auto explosion si trop long
         if (!level.isClientSide && this.tickCount > ModConfigs.CRACKER.LIFETIME_TICKS.get()) {
             explode();
             this.remove();
@@ -87,23 +84,21 @@ public class CrackerBimEntity extends ProjectileItemEntity {
     protected void onHitEntity(EntityRayTraceResult hit) {
         if (level.isClientSide || hasExploded) return;
         hasExploded = true;
-        explode();
 
-        // 💢 Dégâts directs boostés
+        // 💢 Dégâts directs modérés
         Entity target = hit.getEntity();
         if (target.isAlive() && target instanceof LivingEntity) {
             double mult = ModConfigs.CRACKER.DIRECT_HIT_MULTIPLIER.get();
-            float baseDmg = ModConfigs.CRACKER.EXPLOSION_STRENGTH.get().floatValue() * 2.0F;
+            float baseDmg = (float) (ModConfigs.CRACKER.EXPLOSION_STRENGTH.get() * 2.0F);
             float impactDmg = (float) (baseDmg * mult);
-
-            DamageSource dmgSource = new DamageSource("explosion.cracker_bim")
-                    .setExplosion().setProjectile();
-            target.hurt(dmgSource, impactDmg);
+            target.hurt(new DamageSource("explosion.cracker_bim").setExplosion().setProjectile(), impactDmg);
         }
+
+        explode();
         this.remove();
     }
 
-    /** 💥 Explosion avec options configurables */
+    /** 💥 Explosion principale (gère dégâts et rayon visuel séparé) */
     private void explode() {
         if (level.isClientSide || !(level instanceof ServerWorld)) return;
 
@@ -114,38 +109,19 @@ public class CrackerBimEntity extends ProjectileItemEntity {
 
         float strength = ModConfigs.CRACKER.EXPLOSION_STRENGTH.get().floatValue();
         double radius = ModConfigs.CRACKER.RADIUS.get();
+        double visualRadius = ModConfigs.CRACKER.VISUAL_RADIUS.get();
         boolean breakBlocks = ModConfigs.CRACKER.BREAK_BLOCK.get();
         double epicenterHearts = ModConfigs.CRACKER.EPICENTER_DAMAGE.get();
         boolean noItemDestroy = ModConfigs.CRACKER.NO_ITEM_DESTROY.get();
         double blockBreakRadius = ModConfigs.CRACKER.BREAK_BLOCK_RADIUS.get();
 
-        // 💥 Explosion visuelle + son
-        sw.playSound(null, x, y, z, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS,
-                0.7F, 0.9F + sw.random.nextFloat() * 0.2F);
-        sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, x, y, z, 1, 0.0, 0.0, 0.0, 0.0);
+        // 💥 Effets visuels
+        sw.playSound(null, x, y, z, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 0.8F, 1.0F);
+        sw.sendParticles(ParticleTypes.EXPLOSION, x, y, z, (int)(visualRadius * 4),
+                visualRadius / 2, visualRadius / 2, visualRadius / 2, 0.1);
+        sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, x, y, z, 1, 0, 0, 0, 0);
 
-        // ✅ Casse les blocs manuellement si activé
-        if (breakBlocks) {
-            int blockRadius = (int) Math.ceil(blockBreakRadius);
-            BlockPos.Mutable pos = new BlockPos.Mutable();
-            BlockPos center = this.blockPosition();
-
-            for (int dx = -blockRadius; dx <= blockRadius; dx++) {
-                for (int dy = -blockRadius; dy <= blockRadius; dy++) {
-                    for (int dz = -blockRadius; dz <= blockRadius; dz++) {
-                        pos.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
-                        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                        if (dist <= blockBreakRadius && !sw.isEmptyBlock(pos)) {
-                            if (sw.getBlockState(pos).getExplosionResistance(sw, pos, null) < 200.0F) {
-                                sw.destroyBlock(pos, true); // drop les items
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 🧨 Dégâts de zone (ignore les items si configuré)
+        // 💀 Dégâts de zone
         AxisAlignedBB area = new AxisAlignedBB(x - radius, y - radius, z - radius,
                 x + radius, y + radius, z + radius);
         List<Entity> nearby = sw.getEntities(this, area,
@@ -163,6 +139,24 @@ public class CrackerBimEntity extends ProjectileItemEntity {
                     le.hurt(new DamageSource("explosion.cracker_bim").setExplosion(), damage);
                 }
             }
+        }
+
+        // 🧱 Casse blocs
+        if (breakBlocks) {
+            int r = (int) Math.ceil(blockBreakRadius);
+            BlockPos center = this.blockPosition();
+            BlockPos.Mutable pos = new BlockPos.Mutable();
+            for (int dx = -r; dx <= r; dx++)
+                for (int dy = -r; dy <= r; dy++)
+                    for (int dz = -r; dz <= r; dz++) {
+                        pos.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
+                        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        if (dist <= blockBreakRadius && !sw.isEmptyBlock(pos)) {
+                            if (sw.getBlockState(pos).getExplosionResistance(sw, pos, null) < 200.0F) {
+                                sw.destroyBlock(pos, true);
+                            }
+                        }
+                    }
         }
     }
 

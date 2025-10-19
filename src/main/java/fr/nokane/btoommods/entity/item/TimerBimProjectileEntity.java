@@ -4,6 +4,8 @@ import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.item.TimerBimItem;
+import fr.nokane.btoommods.net.Net;
+import fr.nokane.btoommods.net.TimerItemSyncS2C;
 import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.*;
 import net.minecraft.entity.item.ItemEntity;
@@ -23,6 +25,7 @@ import net.minecraft.world.Explosion;
 import net.minecraft.world.World;
 import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.NetworkHooks;
+import net.minecraftforge.fml.network.PacketDistributor;
 
 import java.util.List;
 
@@ -242,37 +245,29 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         ItemStack stack = new ItemStack(ModItems.TIMER_BIM.get());
         CompoundNBT tag = stack.getOrCreateTag();
         tag.putBoolean(TimerBimItem.NBT_ACTIVE, this.isActive());
-        tag.putBoolean(TimerBimItem.NBT_HAS_STARTED, this.hasStarted());
+        tag.putBoolean(TimerBimItem.NBT_HAS_STARTED, true);
         tag.putInt(TimerBimItem.NBT_REMAINING, Math.max(0, this.getRemainingTicks()));
         stack.setTag(tag);
 
-        if (player.addItem(stack)) this.remove();
+        // 🛰️ Synchronisation immédiate du timer avant ajout
+        Net.CH.send(PacketDistributor.PLAYER.with(() -> (net.minecraft.entity.player.ServerPlayerEntity) player),
+                new TimerItemSyncS2C(-1, this.getRemainingTicks()));
+
+        if (player.addItem(stack)) {
+            this.remove();
+        }
     }
 
+
     // ------------------------------
-    // 🔥 Explosion configurable
+    // 💥 Explosion sécurisée (identique à TimerBimItem.safeExplosion)
     // ------------------------------
     private void explodeConfigurable() {
-        if (level.isClientSide || !(level instanceof ServerWorld)) return;
-        ServerWorld sw = (ServerWorld) level;
-
-        BlockPos center = this.blockPosition();
-        double x = getX(), y = getY(), z = getZ();
-
-        double radius = ModConfigs.TIMER.EXPLOSION_RADIUS.get();
-        double blockBreakRadius = ModConfigs.TIMER.BREAK_BLOCK_RADIUS.get();
-        boolean breakBlocks = ModConfigs.TIMER.BREAK_BLOCKS.get();
-        boolean fire = ModConfigs.TIMER.CAUSES_FIRE.get();
-        boolean noItemDestroy = ModConfigs.TIMER.NO_ITEM_DESTROY.get();
-
-        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS,
-                0.8F, 0.9F + sw.random.nextFloat() * 0.2F);
-        sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, x, y, z, 1, 0, 0, 0, 0);
-
-        // casse blocs, dégâts, feu, etc. (inchangé)
-        // ...
-        this.remove();
+        if (level.isClientSide) return;
+        TimerBimItem.safeExplosion(level, getX(), getY(), getZ());
+        this.remove(); // Supprime le projectile après explosion
     }
+
 
     private boolean isGrounded() {
         long now = level.getGameTime();
