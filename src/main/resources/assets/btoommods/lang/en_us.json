@@ -32,5 +32,11 @@
   "death.attack.timer_bim.player": "%1$s was caught by %2$s’s Timer BIM.",
 
   "death.attack.blazing_flame": "%1$s was burned by the flames of a Blazing BIM.",
-  "death.attack.blazing_flame.player": "%1$s was incinerated by %2$s using a Blazing BIM."
+  "death.attack.blazing_flame.player": "%1$s was incinerated by %2$s using a Blazing BIM.",
+
+  "message.btoommods.radar.detected_player": "RADAR > %1$s detected at %2$s blocks [%3$s, %4$s, %5$s]",
+  "message.btoommods.radar.alert_target": "ALERT > You have been detected by %1$s [%2$s, %3$s, %4$s]",
+  "message.btoommods.radar.detected_object": "RADAR > Radar item detected at %1$s blocks [%2$s, %3$s, %4$s]",
+  "message.btoommods.radar.lost_player": "RADAR > %1$s moved away to %2$s blocks",
+  "message.btoommods.radar.lost_object": "RADAR > Radar item moved away to %1$s blocks"
 }

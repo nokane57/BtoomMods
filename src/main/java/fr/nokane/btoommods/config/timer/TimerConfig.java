@@ -10,11 +10,11 @@ public class TimerConfig {
     public final ForgeConfigSpec.DoubleValue VITESSE_PROJECTILE;
     public final ForgeConfigSpec.DoubleValue POIDS_PROJECTILE;
     public final ForgeConfigSpec.DoubleValue EXPLOSION_STRENGTH;
-    public final ForgeConfigSpec.DoubleValue EXPLOSION_RADIUS; // 🆕 Rayon dégâts
+    public final ForgeConfigSpec.DoubleValue EXPLOSION_RADIUS; // Rayon dégâts explosion classique
     public final ForgeConfigSpec.BooleanValue CAUSES_FIRE;
     public final ForgeConfigSpec.BooleanValue BREAK_BLOCKS;
-    public final ForgeConfigSpec.DoubleValue BREAK_BLOCK_RADIUS; // 🆕 Rayon casse bloc
-    public final ForgeConfigSpec.BooleanValue NO_ITEM_DESTROY;   // 🆕 Protection items
+    public final ForgeConfigSpec.DoubleValue BREAK_BLOCK_RADIUS; // Rayon casse bloc
+    public final ForgeConfigSpec.BooleanValue NO_ITEM_DESTROY;   // Protection items
     public final ForgeConfigSpec.IntValue HUD_RADIUS;
 
     // ---- Physique / Rebond ----
@@ -26,10 +26,15 @@ public class TimerConfig {
     public final ForgeConfigSpec.DoubleValue MAX_BOUNCE_UP;
     public final ForgeConfigSpec.DoubleValue STOP_EPS;
 
-    // ---- Dégâts ----
+    // ---- Dégâts et explosion ----
     public final ForgeConfigSpec.DoubleValue IMPACT_HEARTS;
     public final ForgeConfigSpec.IntValue COOLDOWN_TICKS;
     public final ForgeConfigSpec.DoubleValue EXPLOSION_VISUAL_RADIUS;
+
+    // ---- Explosion inventaire & dégâts configurables ----
+    public final ForgeConfigSpec.DoubleValue INVENTORY_EXPLOSION_DAMAGE;   // Dégâts si explose dans l’inventaire
+    public final ForgeConfigSpec.DoubleValue INVENTORY_EXPLOSION_RADIUS;   // Portée explosion dans inventaire
+    public final ForgeConfigSpec.DoubleValue MAX_DAMAGE_AT_EPICENTER;      // Dégât max (épicentre)
 
     public TimerConfig(ForgeConfigSpec.Builder b) {
         b.comment("Configuration du Timer BIM").push("timer");
@@ -68,7 +73,7 @@ public class TimerConfig {
         HUD_RADIUS = b.comment("Distance maximale à laquelle le HUD du timer est visible (en blocs).")
                 .defineInRange("hud_radius", 16, 0, 128);
 
-        // --- Physique ---
+        // --- Physique / rebond ---
         RESTITUTION_GROUND = b.comment("Rebond au sol (0 = pas de rebond, 1 = rebond parfait).")
                 .defineInRange("restitution_ground", 0.25D, 0.0D, 1.0D);
 
@@ -90,17 +95,27 @@ public class TimerConfig {
         STOP_EPS = b.comment("Tolérance d'arrêt (plus haut = s'arrête plus vite).")
                 .defineInRange("stop_eps", 0.05D, 0.0D, 0.5D);
 
-        // --- Dégâts ---
+        // --- Dégâts généraux ---
         IMPACT_HEARTS = b.comment("Dégâts (en cœurs) infligés à l'impact du projectile.")
                 .defineInRange("impact_hearts", 1.0D, 0.0D, 50.0D);
 
         COOLDOWN_TICKS = b.comment(
-                "FR: Délai (en ticks) entre deux tirs du Cracker BIM (20 = 1 seconde).",
-                "EN: Cooldown in ticks between two Cracker BIM throws (20 = 1 second)."
+                "FR: Délai (en ticks) entre deux tirs du Timer BIM (20 = 1 seconde).",
+                "EN: Cooldown in ticks between two Timer BIM throws (20 = 1 second)."
         ).defineInRange("cooldown_ticks", 20, 0, 200);
 
         EXPLOSION_VISUAL_RADIUS = b.comment("Rayon visuel de l'explosion (n'affecte pas les dégâts).")
                 .defineInRange("explosion_visual_radius", 6.0D, 0.5D, 128.0D);
+
+        // --- Explosion inventaire / auto-dégâts ---
+        INVENTORY_EXPLOSION_DAMAGE = b.comment("Dégâts infligés au joueur si la Timer explose dans son inventaire.")
+                .defineInRange("inventory_explosion_damage", 12.0D, 0.0D, 1000.0D);
+
+        INVENTORY_EXPLOSION_RADIUS = b.comment("Rayon d'effet de l'explosion si elle explose dans l'inventaire.")
+                .defineInRange("inventory_explosion_radius", 3.0D, 0.5D, 64.0D);
+
+        MAX_DAMAGE_AT_EPICENTER = b.comment("Dégâts maximum infligés au centre de l'explosion (épicentre).")
+                .defineInRange("max_damage_at_epicenter", 20.0D, 0.0D, 1000.0D);
 
         b.pop();
     }

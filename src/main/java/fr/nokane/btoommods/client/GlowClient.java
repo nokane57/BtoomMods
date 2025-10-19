@@ -13,11 +13,15 @@ import net.minecraftforge.fml.loading.FMLEnvironment;
 
 import java.util.*;
 
+/**
+ * 🔴 Gère uniquement les effets Glow des Remote BIMs, projectiles, etc.
+ * (Radar Glow → séparé dans RadarGlowClient)
+ */
 public final class GlowClient {
 
     private static final Map<Integer, Long> GLOW_UNTIL = new HashMap<>();
     private static final Map<Integer, String> ENTITY_TEAM = new HashMap<>();
-    private static final String TEAM_PREFIX = "gls_";
+    private static final String TEAM_PREFIX = "gl_remote_";
 
     private GlowClient() {}
 
@@ -28,7 +32,7 @@ public final class GlowClient {
     }
 
     /**
-     * 💡 Active un glow très visible, avec particules d’aura.
+     * Active un effet de glowing coloré avec une légère aura (pour Remotes / BIMs)
      */
     public static void apply(int[] ids, int ticks, int colorARGB) {
         Minecraft mc = Minecraft.getInstance();
@@ -40,7 +44,7 @@ public final class GlowClient {
         int slot = ((colorARGB >> 24) & 0xFF);
         if (slot < 1 || slot > 8) slot = 1;
 
-        TextFormatting fmt = SLOT_COLOR.getOrDefault(slot, TextFormatting.WHITE);
+        TextFormatting fmt = SLOT_COLOR.getOrDefault(slot, TextFormatting.RED);
         String teamName = TEAM_PREFIX + slot;
 
         ScorePlayerTeam team = mc.level.getScoreboard().getPlayerTeam(teamName);
@@ -55,10 +59,8 @@ public final class GlowClient {
             Entity e = mc.level.getEntity(id);
             if (e == null || e.removed) continue;
 
-            // ✅ vrai effet de glowing (visible à distance)
             e.setGlowing(true);
 
-            // ✅ couleur via scoreboard
             String sbName = e.getScoreboardName();
             ScorePlayerTeam cur = mc.level.getScoreboard().getPlayersTeam(sbName);
             if (cur != team) {
@@ -69,15 +71,15 @@ public final class GlowClient {
             ENTITY_TEAM.put(id, teamName);
             GLOW_UNTIL.merge(id, until, Math::max);
 
-            // 🌟 Aura de particules (autour du projectile)
+            // 🌟 Aura de particules rouges / énergiques
             Vector3d pos = e.position();
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < 6; i++) {
                 double spread = 0.25 + mc.level.random.nextDouble() * 0.2;
                 mc.level.addParticle(ParticleTypes.END_ROD,
                         pos.x + (mc.level.random.nextDouble() - 0.5) * spread,
                         pos.y + 0.1 + (mc.level.random.nextDouble() - 0.5) * spread,
                         pos.z + (mc.level.random.nextDouble() - 0.5) * spread,
-                        0, 0.01 + mc.level.random.nextDouble() * 0.02, 0);
+                        0, 0.015 + mc.level.random.nextDouble() * 0.02, 0);
             }
         }
     }
@@ -102,32 +104,21 @@ public final class GlowClient {
                 continue;
             }
 
-            // 🔥 Maintien du glow visible
             if (!ent.isGlowing()) ent.setGlowing(true);
 
-            // 💫 Halo visible à grande distance
             double dist = (mc.player != null) ? mc.player.distanceToSqr(ent) : 0.0;
-            if (dist < 600 * 600) { // visible jusqu’à 600 blocs
-                // pulsation douce : varie la quantité selon le temps
-                int pulse = (int) ((System.currentTimeMillis() / 200) % 6);
+            if (dist < 600 * 600) {
+                int pulse = (int) ((System.currentTimeMillis() / 250) % 6);
                 for (int i = 0; i < pulse + 2; i++) {
-                    double offset = 0.2 + mc.level.random.nextDouble() * 0.15;
+                    double offset = 0.25 + mc.level.random.nextDouble() * 0.1;
                     mc.level.addParticle(ParticleTypes.END_ROD,
                             ent.getX() + (mc.level.random.nextDouble() - 0.5) * offset,
                             ent.getY() + 0.1,
                             ent.getZ() + (mc.level.random.nextDouble() - 0.5) * offset,
-                            0.0, 0.02, 0.0);
-                }
-
-                // ✨ éclats blancs discrets
-                if (mc.level.random.nextFloat() < 0.2F) {
-                    mc.level.addParticle(ParticleTypes.CRIT,
-                            ent.getX(), ent.getY() + 0.05, ent.getZ(),
-                            0.0, 0.03, 0.0);
+                            0.0, 0.015, 0.0);
                 }
             }
 
-            // 🧹 expiration
             if (now >= expire) {
                 ent.setGlowing(false);
                 String teamName = ENTITY_TEAM.remove(id);
@@ -144,34 +135,42 @@ public final class GlowClient {
         }
     }
 
-    public static void spawnRemoteOwnerMarker(double x, double y, double z) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return;
-        for (int i = 0; i < 12; i++) {
-            double spread = 0.3;
-            mc.level.addParticle(ParticleTypes.END_ROD,
-                    x + (mc.level.random.nextDouble() - 0.5) * spread,
-                    y + 0.1,
-                    z + (mc.level.random.nextDouble() - 0.5) * spread,
-                    0, 0.02, 0);
-        }
-        for (int i = 0; i < 5; i++) {
-            mc.level.addParticle(ParticleTypes.CRIT,
-                    x, y + 0.1, z,
-                    0.0, 0.03, 0.0);
-        }
-    }
-
-    // ---------- Couleurs de slot ----------
+    // ---------- Couleurs par slot (Remotes uniquement) ----------
     private static final Map<Integer, TextFormatting> SLOT_COLOR = new HashMap<>();
     static {
         SLOT_COLOR.put(1, TextFormatting.RED);
         SLOT_COLOR.put(2, TextFormatting.YELLOW);
-        SLOT_COLOR.put(3, TextFormatting.GREEN);
+        SLOT_COLOR.put(3, TextFormatting.LIGHT_PURPLE);
         SLOT_COLOR.put(4, TextFormatting.AQUA);
-        SLOT_COLOR.put(5, TextFormatting.LIGHT_PURPLE);
-        SLOT_COLOR.put(6, TextFormatting.BLUE);
-        SLOT_COLOR.put(7, TextFormatting.GOLD);
+        SLOT_COLOR.put(5, TextFormatting.BLUE);
+        SLOT_COLOR.put(6, TextFormatting.GOLD);
+        SLOT_COLOR.put(7, TextFormatting.DARK_RED);
         SLOT_COLOR.put(8, TextFormatting.DARK_AQUA);
+    }
+
+    /**
+     * 📍 Marqueur du propriétaire du Remote BIM
+     * Affiche un effet visuel de particules blanches et lumineuses.
+     */
+    public static void spawnRemoteOwnerMarker(double x, double y, double z) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return;
+
+        // Petits éclats lumineux autour du point
+        for (int i = 0; i < 10; i++) {
+            double spread = 0.3;
+            mc.level.addParticle(ParticleTypes.END_ROD,
+                    x + (mc.level.random.nextDouble() - 0.5) * spread,
+                    y + 0.1 + (mc.level.random.nextDouble() * 0.3),
+                    z + (mc.level.random.nextDouble() - 0.5) * spread,
+                    0, 0.02, 0);
+        }
+
+        // Quelques particules critiques pour un effet d’impact
+        for (int i = 0; i < 4; i++) {
+            mc.level.addParticle(ParticleTypes.CRIT,
+                    x, y + 0.1, z,
+                    0.0, 0.03, 0.0);
+        }
     }
 }
