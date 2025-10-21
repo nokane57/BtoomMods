@@ -38,5 +38,8 @@
   "message.btoommods.radar.alert_target": "ALERTE > Vous avez été détecté par %1$s [%2$s, %3$s, %4$s]",
   "message.btoommods.radar.detected_object": "RADAR > Objet radar détecté à %1$s blocs [%2$s, %3$s, %4$s]",
   "message.btoommods.radar.lost_player": "RADAR > %1$s s’éloigne à %2$s blocs",
-  "message.btoommods.radar.lost_object": "RADAR > Objet radar s’éloigne à %1$s blocs"
+  "message.btoommods.radar.lost_object": "RADAR > Objet radar s’éloigne à %1$s blocs",
+
+  "msg.radar.scan_start": "📡 Scan radar lancé...",
+  "msg.radar.cooldown": "⏳ Le radar est en recharge..."
 }

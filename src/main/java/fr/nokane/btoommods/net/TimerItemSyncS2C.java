@@ -11,8 +11,8 @@ import net.minecraftforge.fml.network.NetworkEvent;
 
 import java.util.function.Supplier;
 
+/** Sync restant pour item au sol et pour inventaire (-1). */
 public class TimerItemSyncS2C {
-
     private final int entityId;
     private final int remainingTicks;
 
@@ -36,7 +36,6 @@ public class TimerItemSyncS2C {
             context.setPacketHandled(true);
             return;
         }
-
         context.enqueueWork(() -> handleClient(msg));
         context.setPacketHandled(true);
     }

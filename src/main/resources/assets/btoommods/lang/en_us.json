@@ -4,12 +4,12 @@
   "item.btoommods.timer_bim": "Timer BIM",
   "item.btoommods.remote_bim": "Remote BIM",
   "item.btoommods.gas_bim": "Gas BIM",
-  "item.btoommods.gas_bim_disabled": "Gas BIM Disabled",
-  "item.btoommods.radar": "Radar",
+  "item.btoommods.gas_bim_disabled": "Gas BIM (Disabled)",
+  "item.btoommods.radar": "Radar Implant",
   "item.btoommods.remote_bracelet": "Remote Bracelet",
 
   "key.categories.btoommods": "Btooom Mods",
-  "key.btoommods.radar": "Radar (scan)",
+  "key.btoommods.radar": "Radar (Scan)",
   "key.btoommods.remote_bracelet": "Open Remote Bracelet",
   "key.btoommods.timer_toggle": "Toggle Timer",
 
@@ -35,8 +35,11 @@
   "death.attack.blazing_flame.player": "%1$s was incinerated by %2$s using a Blazing BIM.",
 
   "message.btoommods.radar.detected_player": "RADAR > %1$s detected at %2$s blocks [%3$s, %4$s, %5$s]",
-  "message.btoommods.radar.alert_target": "ALERT > You have been detected by %1$s [%2$s, %3$s, %4$s]",
+  "message.btoommods.radar.alert_target": "ALERT > You were detected by %1$s [%2$s, %3$s, %4$s]",
   "message.btoommods.radar.detected_object": "RADAR > Radar item detected at %1$s blocks [%2$s, %3$s, %4$s]",
   "message.btoommods.radar.lost_player": "RADAR > %1$s moved away to %2$s blocks",
-  "message.btoommods.radar.lost_object": "RADAR > Radar item moved away to %1$s blocks"
+  "message.btoommods.radar.lost_object": "RADAR > Radar item moved away to %1$s blocks",
+
+  "msg.radar.scan_start": "RADAR > Radar scan initiated...",
+  "msg.radar.cooldown": "RADAR > Radar is recharging..."
 }

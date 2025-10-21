@@ -4,8 +4,6 @@ import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.item.ModItems;
 import fr.nokane.btoommods.item.TimerBimItem;
-import fr.nokane.btoommods.net.Net;
-import fr.nokane.btoommods.net.TimerItemSyncS2C;
 import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.*;
 import net.minecraft.entity.item.ItemEntity;
@@ -15,7 +13,9 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.network.IPacket;
-import net.minecraft.network.datasync.*;
+import net.minecraft.network.datasync.DataParameter;
+import net.minecraft.network.datasync.DataSerializers;
+import net.minecraft.network.datasync.EntityDataManager;
 import net.minecraft.particles.ParticleTypes;
 import net.minecraft.util.*;
 import net.minecraft.util.math.*;
@@ -25,16 +25,9 @@ import net.minecraft.world.Explosion;
 import net.minecraft.world.World;
 import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.NetworkHooks;
-import net.minecraftforge.fml.network.PacketDistributor;
 
 import java.util.List;
 
-/**
- * ⏱️ Timer BIM — Bombe à retardement
- * - Gravité + rebond réalistes
- * - Explosion configurable (force, rayon, feu, casse de blocs, protection items)
- * - Interaction manuelle : récupérable au sol
- */
 public class TimerBimProjectileEntity extends ProjectileItemEntity {
 
     private static final DataParameter<Boolean> DATA_ACTIVE =
@@ -82,13 +75,13 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     public void tick() {
         super.tick();
 
-        // Gravité ajustée par le poids
+        // ✅ Gravité depuis ta config FR
         if (!this.isNoGravity()) {
-            Vector3d m = this.getDeltaMovement();
-            this.setDeltaMovement(m.x, m.y - ModConfigs.TIMER.POIDS_PROJECTILE.get(), m.z);
+            Vector3d motion = this.getDeltaMovement();
+            this.setDeltaMovement(motion.x, motion.y - ModConfigs.TIMER.POIDS_PROJECTILE.get(), motion.z);
         }
 
-        // Correction de position au sol
+        // Correction surface / sol
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -99,13 +92,13 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             }
         }
 
-        // Gestion du compte à rebours serveur
+        // Décompte serveur
         if (!level.isClientSide && isActive() && getRemainingTicks() > 0) {
             int remaining = getRemainingTicks() - 1;
             this.entityData.set(DATA_REMAINING, remaining);
 
             if (remaining <= 0) {
-                explodeConfigurable();
+                safeExplosionWorld(level, getX(), getY(), getZ());
                 this.entityData.set(DATA_REMAINING, 0);
                 this.entityData.set(DATA_ACTIVE, false);
                 this.remove();
@@ -113,7 +106,6 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             }
         }
 
-        // Client : pour le HUD (explosion détectée)
         if (level.isClientSide && !explodedClientSide && getRemainingTicks() <= 0) {
             explodedClientSide = true;
         }
@@ -125,9 +117,6 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         return explodedClientSide || getRemainingTicks() <= 0 || !isAlive();
     }
 
-    // ------------------------------
-    // 🧱 Gestion des collisions blocs
-    // ------------------------------
     @Override
     protected void onHit(RayTraceResult hit) {
         if (hit.getType() == RayTraceResult.Type.ENTITY) {
@@ -140,8 +129,8 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         Direction face = br.getDirection();
         BlockPos bpos = br.getBlockPos();
         Vector3d loc = br.getLocation();
-
         Vector3d v = this.getDeltaMovement();
+
         double restitutionGround = ModConfigs.TIMER.RESTITUTION_GROUND.get();
         double frictionGround = ModConfigs.TIMER.FRICTION_GROUND.get();
         double restitutionWall = ModConfigs.TIMER.RESTITUTION_WALL.get();
@@ -173,7 +162,6 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
                 this.fallDistance = 0.0F;
                 lastGroundHitTime = level.getGameTime();
 
-                // ✅ Joue le son uniquement si le rebond est assez fort
                 if (this.getDeltaMovement().lengthSqr() > 0.04) {
                     SoundUtils.playRebound(level, getX(), getY(), getZ());
                 }
@@ -191,7 +179,6 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
                 );
                 this.setDeltaMovement(newV);
 
-                // ✅ Son uniquement si vitesse significative
                 if (this.getDeltaMovement().lengthSqr() > 0.04) {
                     SoundUtils.playRebound(level, getX(), getY(), getZ());
                 }
@@ -205,16 +192,14 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         }
     }
 
-    // ------------------------------
-    // 💥 Collision avec entités vivantes
-    // ------------------------------
     @Override
     protected void onHitEntity(EntityRayTraceResult hit) {
         Entity target = hit.getEntity();
 
         if (!level.isClientSide) {
+            // ✅ utilise le champ IMPACT_HEARTS (dégâts d’impact direct)
             if (target instanceof LivingEntity) {
-                float dmg = (float) (ModConfigs.TIMER.IMPACT_HEARTS.get() * 2.0);
+                float dmg = (float) (double) ModConfigs.TIMER.IMPACT_HEARTS.get();
                 target.hurt(new IndirectEntityDamageSource("timer_bim", this, this.getOwner()).setProjectile(), dmg);
             }
 
@@ -227,16 +212,12 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             this.hasImpulse = true;
             this.yRot += (this.random.nextFloat() - 0.5f) * 20f;
 
-            // ✅ Rebond sonore uniquement si assez de vitesse
             if (this.getDeltaMovement().lengthSqr() > 0.04) {
                 SoundUtils.playRebound(level, getX(), getY(), getZ());
             }
         }
     }
 
-    // ------------------------------
-    // 🧍 Interaction joueur
-    // ------------------------------
     @Override
     public void playerTouch(PlayerEntity player) {
         if (level.isClientSide) return;
@@ -249,25 +230,10 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         tag.putInt(TimerBimItem.NBT_REMAINING, Math.max(0, this.getRemainingTicks()));
         stack.setTag(tag);
 
-        // 🛰️ Synchronisation immédiate du timer avant ajout
-        Net.CH.send(PacketDistributor.PLAYER.with(() -> (net.minecraft.entity.player.ServerPlayerEntity) player),
-                new TimerItemSyncS2C(-1, this.getRemainingTicks()));
-
         if (player.addItem(stack)) {
             this.remove();
         }
     }
-
-
-    // ------------------------------
-    // 💥 Explosion sécurisée (identique à TimerBimItem.safeExplosion)
-    // ------------------------------
-    private void explodeConfigurable() {
-        if (level.isClientSide) return;
-        TimerBimItem.safeExplosion(level, getX(), getY(), getZ());
-        this.remove(); // Supprime le projectile après explosion
-    }
-
 
     private boolean isGrounded() {
         long now = level.getGameTime();
@@ -287,5 +253,55 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     @Override
     public IPacket<?> getAddEntityPacket() {
         return NetworkHooks.getEntitySpawningPacket(this);
+    }
+
+    /** Explosion monde standard + dégâts custom. */
+    public static void safeExplosionWorld(World world, double x, double y, double z) {
+        if (!(world instanceof ServerWorld)) return;
+        ServerWorld sw = (ServerWorld) world;
+
+        boolean breakBlocks = ModConfigs.TIMER.BREAK_BLOCKS.get();
+        boolean fire = ModConfigs.TIMER.CAUSES_FIRE.get();
+        boolean noItemDestroy = ModConfigs.TIMER.NO_ITEM_DESTROY.get();
+
+        double dmgEpic = ModConfigs.TIMER.MAX_DAMAGE_AT_EPICENTER.get();
+        double dmgOuter = ModConfigs.TIMER.INVENTORY_EXPLOSION_DAMAGE.get();
+        double radius = ModConfigs.TIMER.EXPLOSION_RADIUS.get();
+        double visualRad = ModConfigs.TIMER.EXPLOSION_VISUAL_RADIUS.get();
+        float power = (float) (double) ModConfigs.TIMER.EXPLOSION_STRENGTH.get();
+
+        BlockPos center = new BlockPos(x, y, z);
+        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 1.0F, 1.0F);
+        sw.sendParticles(ParticleTypes.EXPLOSION, x, y, z, (int)(visualRad * 4), visualRad / 2, visualRad / 2, visualRad / 2, 0.1);
+        sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, x, y, z, 1, 0, 0, 0, 0);
+
+        Explosion explosion = new Explosion(world, null, null, null, x, y, z, power, fire,
+                breakBlocks ? Explosion.Mode.DESTROY : Explosion.Mode.NONE);
+        explosion.explode();
+        explosion.finalizeExplosion(true);
+
+        AxisAlignedBB aabb = new AxisAlignedBB(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius);
+        List<LivingEntity> victims = sw.getEntitiesOfClass(LivingEntity.class, aabb, e -> e.isAlive());
+        for (LivingEntity e : victims) {
+            double dx = e.getX() - x;
+            double dy = (e.getY() + e.getBbHeight() * 0.5) - y;
+            double dz = e.getZ() - z;
+            double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (dist > radius) continue;
+
+            double t = Math.min(1.0, dist / radius);
+            double dmg = dmgEpic + (dmgOuter - dmgEpic) * t;
+            e.hurt(DamageSource.explosion((Explosion) null), (float) dmg);
+        }
+
+        if (noItemDestroy) {
+            AxisAlignedBB area = new AxisAlignedBB(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius);
+            List<ItemEntity> items = sw.getEntitiesOfClass(ItemEntity.class, area);
+            for (ItemEntity it : items) {
+                it.setInvulnerable(true);
+                Vector3d dir = it.position().subtract(x, y, z).normalize().scale(0.25);
+                it.setDeltaMovement(it.getDeltaMovement().add(dir));
+            }
+        }
     }
 }

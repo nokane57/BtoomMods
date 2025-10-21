@@ -1,5 +1,6 @@
 package fr.nokane.btoommods.server;
 
+import fr.nokane.btoommods.Btoommods;
 import fr.nokane.btoommods.item.TimerBimItem;
 import fr.nokane.btoommods.net.Net;
 import fr.nokane.btoommods.net.TimerItemSyncS2C;
@@ -13,18 +14,13 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.network.PacketDistributor;
 import net.minecraftforge.fml.server.ServerLifecycleHooks;
 
-/**
- * Synchronise les timers actifs dans les inventaires des joueurs,
- * sans modifier directement leur état serveur.
- */
-@Mod.EventBusSubscriber(value = Dist.DEDICATED_SERVER)
+/** Envoie le restant des Timers actifs dans l'inventaire pour HUD. */
+@Mod.EventBusSubscriber(modid = Btoommods.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class TimerServerSync {
 
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
-
-        // Tick toutes les secondes
         if (ServerLifecycleHooks.getCurrentServer().getTickCount() % 20 != 0) return;
 
         for (ServerPlayerEntity player : ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayers()) {
@@ -38,7 +34,6 @@ public class TimerServerSync {
                 int remaining = tag.getInt(TimerBimItem.NBT_REMAINING);
                 if (remaining <= 0) continue;
 
-                // 🛰 Envoi uniquement de l'état courant au client (pas de modification côté serveur)
                 Net.CH.send(PacketDistributor.PLAYER.with(() -> player),
                         new TimerItemSyncS2C(-1, remaining));
             }

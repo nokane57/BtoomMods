@@ -12,31 +12,18 @@ import net.minecraftforge.fml.network.NetworkEvent;
 import java.util.function.Supplier;
 
 public class TimerToggledS2C {
-
     public enum Action { ACTIVATED, DEACTIVATED }
-
     private final Action action;
+    public TimerToggledS2C(Action action) { this.action = action; }
 
-    public TimerToggledS2C(Action action) {
-        this.action = action;
-    }
-
-    public static void encode(TimerToggledS2C msg, PacketBuffer buf) {
-        buf.writeEnum(msg.action);
-    }
-
-    public static TimerToggledS2C decode(PacketBuffer buf) {
-        return new TimerToggledS2C(buf.readEnum(Action.class));
-    }
+    public static void encode(TimerToggledS2C msg, PacketBuffer buf) { buf.writeEnum(msg.action); }
+    public static TimerToggledS2C decode(PacketBuffer buf) { return new TimerToggledS2C(buf.readEnum(Action.class)); }
 
     public static void handle(TimerToggledS2C msg, Supplier<NetworkEvent.Context> ctx) {
         NetworkEvent.Context context = ctx.get();
-
-        // Ne faire quelque chose que côté client
         if (context.getDirection().getReceptionSide() == LogicalSide.CLIENT) {
             context.enqueueWork(() -> handleClient(msg));
         }
-
         context.setPacketHandled(true);
     }
 

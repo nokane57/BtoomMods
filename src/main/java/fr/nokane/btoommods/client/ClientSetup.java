@@ -2,6 +2,7 @@ package fr.nokane.btoommods.client;
 
 import fr.nokane.btoommods.Btoommods;
 import fr.nokane.btoommods.client.effects.RadarWaveEffect;
+import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.ModEntities;
 import fr.nokane.btoommods.net.*;
 import fr.nokane.btoommods.sound.SoundUtils;
@@ -9,6 +10,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.SpriteRenderer;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.text.TranslationTextComponent;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -33,6 +35,9 @@ public class ClientSetup {
     private static KeyBinding RADAR_KEY;
     private static KeyBinding REMOTE_GUI_KEY;
     private static KeyBinding TIMER_TOGGLE_KEY;
+
+    // 🕒 Cooldown radar local (en ticks)
+    private static long radarCooldownEnd = 0L;
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent e) {
@@ -76,16 +81,29 @@ public class ClientSetup {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
 
+        long now = mc.level.getGameTime();
+
         // === Radar ===
         while (RADAR_KEY.consumeClick()) {
-            Net.CH.sendToServer(new RadarScanC2S());
+            int cooldown = ModConfigs.RADAR.RADAR_COOLDOWN_TICKS.get();
 
-            // 🌊 Onde radar visuelle côté client (preview instantanée)
+            if (now < radarCooldownEnd) {
+                // ⏳ Cooldown actif
+                mc.player.displayClientMessage(new TranslationTextComponent("msg.radar.cooldown"), true);
+                continue;
+            }
+
+            // ✅ Envoi du packet radar
+            Net.CH.sendToServer(new RadarScanC2S());
+            radarCooldownEnd = now + cooldown;
+
+            // 🌊 Onde radar visuelle côté client
             double x = mc.player.getX();
             double y = mc.player.getY() + mc.player.getBbHeight() * 0.5;
             double z = mc.player.getZ();
             RadarWaveEffect.trigger(x, y, z, 80, 40); // rayon / durée par défaut
-            SoundUtils.playClac();
+
+            mc.player.displayClientMessage(new TranslationTextComponent("msg.radar.scan_start"), true);
         }
 
         // === Bracelet GUI ===

@@ -18,13 +18,7 @@ import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/**
- * 🎯 HUD du Timer BIM :
- * - Affiche un compte à rebours fluide (avec décimales).
- * - Priorité : projectile > item au sol > inventaire/main.
- * - Reste visible et fluide lors d’un drop.
- * - S’efface instantanément à l’explosion (affiche 0.0 juste avant).
- */
+/** HUD simple et robuste pour Timer. */
 @Mod.EventBusSubscriber(value = Dist.CLIENT)
 public class TimerHudOverlay extends AbstractGui {
 
@@ -49,21 +43,15 @@ public class TimerHudOverlay extends AbstractGui {
         Entity currentEntity = detectActiveEntity(mc, radius);
         double remaining = detectRemainingSeconds(mc, currentEntity);
 
-        // 💥 Explosion → cache le HUD immédiatement
         if (remaining <= 0.0 &&
                 (currentEntity instanceof TimerBimProjectileEntity || currentEntity instanceof ItemEntity)) {
-            justExploded = true;
-            explosionTick = gameTick;
-            lastRemaining = -1;
-            lostSinceTick = -1;
+            justExploded = true; explosionTick = gameTick;
+            lastRemaining = -1; lostSinceTick = -1;
             return;
         }
-
-        // 🚫 Cache 3 ticks après explosion
         if (justExploded && gameTick - explosionTick < 3) return;
         justExploded = false;
 
-        // 🎯 Si on vient de drop, conserve la dernière valeur pendant 0.5s (10 ticks)
         if (remaining < 0 && lastRemaining > 0 &&
                 (lostSinceTick == -1 || gameTick - lostSinceTick <= 10)) {
             remaining = Math.max(0.0, lastRemaining - (gameTick - lostSinceTick) / 20.0);
@@ -73,16 +61,11 @@ public class TimerHudOverlay extends AbstractGui {
             return;
         }
 
-        if (currentEntity != null) {
-            lostSinceTick = -1;
-        } else if (lostSinceTick == -1) {
-            lostSinceTick = gameTick;
-        }
+        if (currentEntity != null) lostSinceTick = -1;
+        else if (lostSinceTick == -1) lostSinceTick = gameTick;
 
-        // ✅ Sauvegarde dernière valeur connue
         lastRemaining = remaining;
 
-        // --- Dessin du HUD ---
         int screenW = mc.getWindow().getGuiScaledWidth();
         int x = screenW - 64 - 5;
         int y = 5;
@@ -92,17 +75,10 @@ public class TimerHudOverlay extends AbstractGui {
         mc.getTextureManager().bind(HUD_TEXTURE);
         blit(matrix, x, y, 0, 0, 64, 64, 64, 64);
 
-        // 🔢 Texte précis
         String text = (remaining <= 0.05) ? "0.0" : String.format("%.1f", remaining);
-
-        // 🔥 Rouge clignotant pour les 3 dernières secondes
-        int color;
-        if (remaining <= 3.0) {
-            float blink = (float) ((System.currentTimeMillis() / 200L) % 2);
-            color = blink < 1 ? 0xFFFF0000 : 0xFF550000;
-        } else {
-            color = 0x00FF00;
-        }
+        int color = (remaining <= 3.0)
+                ? (((System.currentTimeMillis() / 200L) % 2 == 0) ? 0xFFFF0000 : 0xFF550000)
+                : 0x00FF00;
 
         FontRenderer font = mc.font;
         int textX = x + 32 - font.width(text) / 2;
@@ -110,9 +86,7 @@ public class TimerHudOverlay extends AbstractGui {
         font.draw(matrix, text, textX, textY, color);
     }
 
-    /** 🔍 Détection du timer actif (projectile > item > inventaire) */
     private static Entity detectActiveEntity(Minecraft mc, double radius) {
-        // 1️⃣ Projectile actif
         TimerBimProjectileEntity proj = mc.level.getEntitiesOfClass(
                         TimerBimProjectileEntity.class,
                         mc.player.getBoundingBox().inflate(radius))
@@ -121,7 +95,6 @@ public class TimerHudOverlay extends AbstractGui {
                 .findFirst().orElse(null);
         if (proj != null) return proj;
 
-        // 2️⃣ Item actif au sol
         ItemEntity itemEntity = mc.level.getEntitiesOfClass(
                         ItemEntity.class,
                         mc.player.getBoundingBox().inflate(radius),
@@ -131,7 +104,6 @@ public class TimerHudOverlay extends AbstractGui {
                 .findFirst().orElse(null);
         if (itemEntity != null) return itemEntity;
 
-        // 3️⃣ Timer actif dans l’inventaire
         for (ItemStack stack : mc.player.inventory.items) {
             if (stack.getItem() instanceof TimerBimItem) {
                 boolean active = stack.getOrCreateTag().getBoolean(TimerBimItem.NBT_ACTIVE);
@@ -139,14 +111,11 @@ public class TimerHudOverlay extends AbstractGui {
                 if (active && ticks > 0) return mc.player;
             }
         }
-
         return null;
     }
 
-    /** ⏱️ Retourne le temps restant précis */
     private static double detectRemainingSeconds(Minecraft mc, Entity entity) {
         if (entity == null) return -1;
-
         int ticks = 0;
 
         if (entity instanceof TimerBimProjectileEntity) {

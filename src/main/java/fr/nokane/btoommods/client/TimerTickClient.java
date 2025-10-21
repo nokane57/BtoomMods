@@ -13,15 +13,9 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/**
- * 🎧 TimerTickClient — Gestion du son du Timer BIM :
- * - Bip par seconde, même pendant un drop.
- * - Synchronisé avec le HUD.
- * - Ne spamme plus à la transition inventaire → sol.
- */
+/** Bip par seconde pour Timer BIM. */
 @Mod.EventBusSubscriber(value = Dist.CLIENT)
 public class TimerTickClient {
-
     private static int lastSeconds = -1;
     private static long lastGameTick = 0;
     private static long lostSinceTick = -1;
@@ -37,7 +31,6 @@ public class TimerTickClient {
         Entity entity = detectActiveTimerEntity(mc);
         int secs = detectRemainingSeconds(mc, entity);
 
-        // 🔄 Garde le son pendant 0.5s après drop
         if (secs < 0 && lastSeconds > 0 && (lostSinceTick == -1 || currentTick - lostSinceTick <= 10)) {
             secs = lastSeconds - 1;
         } else if (secs < 0) {
@@ -49,7 +42,6 @@ public class TimerTickClient {
         if (entity != null) lostSinceTick = -1;
         else if (lostSinceTick == -1) lostSinceTick = currentTick;
 
-        // 🎵 Bip à chaque nouvelle seconde
         if (lastSeconds != -1 && secs < lastSeconds && secs >= 0) {
             if ((currentTick - lastGameTick) >= 18) {
                 mc.getSoundManager().play(SimpleSound.forUI(ModSounds.PI_ITEM.get(), 1.0F));
@@ -85,7 +77,6 @@ public class TimerTickClient {
                 if (active && ticks > 0) return mc.player;
             }
         }
-
         return null;
     }
 

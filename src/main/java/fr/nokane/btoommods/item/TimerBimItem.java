@@ -4,38 +4,29 @@ import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.entity.item.TimerBimProjectileEntity;
 import fr.nokane.btoommods.net.Net;
 import fr.nokane.btoommods.net.TimerItemSyncS2C;
-import net.minecraft.entity.*;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.*;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.particles.ParticleTypes;
 import net.minecraft.util.*;
-import net.minecraft.util.math.*;
-import net.minecraft.util.math.vector.Vector3d;
-import net.minecraft.world.Explosion;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.world.World;
 import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.fml.network.PacketDistributor;
 
 import java.util.List;
 
-/**
- * ⏱️ Timer BIM corrigé :
- * - Explosion consommée dans l’inventaire
- * - Dégâts configurables en inventaire
- * - Rayon et dégâts max réglables
- * - Pas de réinitialisation du timer après mort
- */
 public class TimerBimItem extends Item {
 
     public static final String NBT_ACTIVE = "Active";
     public static final String NBT_HAS_STARTED = "HasStarted";
     public static final String NBT_REMAINING = "RemainingTicks";
+    public static final String NBT_JUST_EXPLODED = "JustExploded";
 
-    public TimerBimItem(Properties props) {
-        super(props);
-    }
+    public TimerBimItem(Properties props) { super(props); }
 
     public static int getMaxSeconds() { return ModConfigs.TIMER.DEFAULT_SECONDS.get(); }
     public static int getMaxTicks()   { return getMaxSeconds() * 20; }
@@ -57,7 +48,7 @@ public class TimerBimItem extends Item {
         PlayerEntity player = (PlayerEntity) living;
         int used = this.getUseDuration(stack) - timeLeft;
         float power = Math.min(1.0f, used / 20.0f);
-        float velocity = (float)(1.7f * power * ModConfigs.TIMER.VITESSE_PROJECTILE.get());
+        float velocity = (float) (1.7f * power * ModConfigs.TIMER.VITESSE_PROJECTILE.get());
 
         CompoundNBT tag = stack.getOrCreateTag();
         boolean active     = tag.getBoolean(NBT_ACTIVE);
@@ -80,7 +71,7 @@ public class TimerBimItem extends Item {
     public void inventoryTick(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
         if (world.isClientSide) return;
 
-        // 🛑 Si le joueur meurt, consomme immédiatement la Timer active
+        // Consomme si le joueur est mort
         if (entity instanceof PlayerEntity && !entity.isAlive()) {
             CompoundNBT tag = stack.getOrCreateTag();
             if (tag.getBoolean(NBT_ACTIVE)) stack.shrink(1);
@@ -96,25 +87,30 @@ public class TimerBimItem extends Item {
         if (world.isClientSide) return false;
 
         CompoundNBT tag = stack.getOrCreateTag();
+
+        // Initialisation si manquante
         if (!tag.contains(NBT_REMAINING))
             tag.putInt(NBT_REMAINING, getMaxTicks());
-        else if (tag.getInt(NBT_REMAINING) <= 0)
-            tag.putInt(NBT_REMAINING, getMaxTicks());
-
-        if (!tag.contains(NBT_HAS_STARTED)) tag.putBoolean(NBT_HAS_STARTED, false);
-        if (!tag.contains(NBT_ACTIVE)) tag.putBoolean(NBT_ACTIVE, false);
+        if (!tag.contains(NBT_HAS_STARTED))
+            tag.putBoolean(NBT_HAS_STARTED, false);
+        if (!tag.contains(NBT_ACTIVE))
+            tag.putBoolean(NBT_ACTIVE, false);
 
         boolean active = tag.getBoolean(NBT_ACTIVE);
         boolean started = tag.getBoolean(NBT_HAS_STARTED);
         int remaining = tag.getInt(NBT_REMAINING);
 
-        if (started && remaining > 0) {
-            tickTimer(stack, world, entity, entity.getX(), entity.getY(), entity.getZ(), false, entity);
+        // 🟡 Si en pause : ne tick pas, garde RemainingTicks tel quel
+        if (started && !active) {
+            // Rien à faire, le timer reste figé
             return false;
         }
 
-        if (!active) return false;
-        tickTimer(stack, world, entity, entity.getX(), entity.getY(), entity.getZ(), false, entity);
+        // 🔴 Si actif : tick normalement
+        if (active && remaining > 0) {
+            tickTimer(stack, world, entity, entity.getX(), entity.getY(), entity.getZ(), false, entity);
+        }
+
         return false;
     }
 
@@ -139,16 +135,15 @@ public class TimerBimItem extends Item {
                 tag.putInt(NBT_REMAINING, 0);
                 stack.setTag(tag);
 
-                // Explosion d'inventaire ou normale selon le contexte
                 if (holder instanceof PlayerEntity) {
-                    PlayerEntity player = (PlayerEntity) holder;
-                    double dmg = ModConfigs.TIMER.INVENTORY_EXPLOSION_DAMAGE.get();
-                    double radius = ModConfigs.TIMER.INVENTORY_EXPLOSION_RADIUS.get();
-                    double maxDmg = ModConfigs.TIMER.MAX_DAMAGE_AT_EPICENTER.get();
-                    applyInventoryExplosion(world, player, dmg, radius, maxDmg);
-                    stack.shrink(1);
+                    // ⚡ Explosion dans l’inventaire : consomme uniquement celui qui a explosé
+                    boolean consumed = applyInventoryExplosion((PlayerEntity) holder, stack);
+
+                    if (!consumed && stack.getCount() > 0) {
+                        stack.shrink(1);
+                    }
                 } else {
-                    safeExplosion(world, x, y, z);
+                    TimerBimProjectileEntity.safeExplosionWorld(world, x, y, z);
                     if (shrinkOnExplode && stack.getCount() > 0) stack.shrink(1);
                     else if (entityToRemove != null) entityToRemove.remove();
                 }
@@ -156,33 +151,50 @@ public class TimerBimItem extends Item {
             return true;
         }
 
-        // 🔁 Synchronisation toutes les secondes
+        // Sync toutes les secondes
         if (!world.isClientSide && entityToRemove != null && remaining % 20 == 0) {
             Net.CH.send(PacketDistributor.TRACKING_ENTITY.with(() -> entityToRemove),
                     new TimerItemSyncS2C(entityToRemove.getId(), remaining));
         }
-
         return false;
     }
 
-    /** 💥 Explosion dans l’inventaire : dégâts progressifs, pas de casse de blocs */
-    private static void applyInventoryExplosion(World world, PlayerEntity player,
-                                                double baseDamage, double radius, double maxDamageEpicenter) {
-        if (!(world instanceof ServerWorld)) return;
+    /** Explosion dans l'inventaire : consomme UNIQUEMENT le timer explosé, marque "JustExploded" */
+    private static boolean applyInventoryExplosion(PlayerEntity player, ItemStack explodedStack) {
+        World world = player.level;
+        if (!(world instanceof ServerWorld)) return false;
         ServerWorld sw = (ServerWorld) world;
+
+        double radius = ModConfigs.TIMER.INVENTORY_EXPLOSION_RADIUS.get();
+        double dmgEpic = ModConfigs.TIMER.MAX_DAMAGE_AT_EPICENTER.get();
+        double dmgOuter = ModConfigs.TIMER.INVENTORY_EXPLOSION_DAMAGE.get();
 
         double x = player.getX();
         double y = player.getY() + player.getBbHeight() * 0.5;
         double z = player.getZ();
 
-        // 🔊 Effet visuel/sonore
+        // ✅ Étape 1 : Marque ce timer comme "JustExploded"
+        CompoundNBT explodedTag = explodedStack.getOrCreateTag();
+        explodedTag.putBoolean(NBT_JUST_EXPLODED, true);
+        explodedStack.setTag(explodedTag);
+
+        // Supprime seulement ce stack du slot concerné
+        for (int i = 0; i < player.inventory.items.size(); i++) {
+            ItemStack s = player.inventory.items.get(i);
+            if (s == explodedStack) {
+                s.shrink(s.getCount());
+                player.inventory.items.set(i, ItemStack.EMPTY);
+                player.inventory.setChanged();
+                break;
+            }
+        }
+
+        // 💥 Étape 2 : Explosion et dégâts
         sw.playSound(null, player.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundCategory.PLAYERS, 1.0F, 1.0F);
         sw.sendParticles(ParticleTypes.EXPLOSION, x, y, z, 8, 0.3, 0.3, 0.3, 0.02);
 
-        // 💀 Dégâts dégressifs sur rayon
-        List<LivingEntity> victims = sw.getEntitiesOfClass(LivingEntity.class,
-                new AxisAlignedBB(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius),
-                e -> e.isAlive());
+        AxisAlignedBB area = new AxisAlignedBB(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius);
+        List<LivingEntity> victims = sw.getEntitiesOfClass(LivingEntity.class, area, e -> e.isAlive());
 
         for (LivingEntity e : victims) {
             double dx = e.getX() - x;
@@ -191,62 +203,19 @@ public class TimerBimItem extends Item {
             double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
             if (dist > radius) continue;
 
-            double ratio = 1.0 - (dist / radius);
-            double dmg = baseDamage + (maxDamageEpicenter - baseDamage) * ratio;
-
-            // Le porteur prend uniquement le baseDamage
-            if (e == player) dmg = baseDamage;
-
+            double t = Math.min(1.0, dist / radius);
+            double dmg = dmgEpic - (dmgEpic - dmgOuter) * t;
             e.hurt(DamageSource.explosion(player), (float) dmg);
         }
+
+        return true;
     }
 
-    /** 💣 Explosion standard du projectile (au sol/en l’air) */
-    public static void safeExplosion(World world, double x, double y, double z) {
-        if (!(world instanceof ServerWorld)) return;
-        ServerWorld sw = (ServerWorld) world;
-
-        boolean breakBlocks = ModConfigs.TIMER.BREAK_BLOCKS.get();
-        boolean fire = ModConfigs.TIMER.CAUSES_FIRE.get();
-        boolean noItemDestroy = ModConfigs.TIMER.NO_ITEM_DESTROY.get();
-
-        double blockRadius = ModConfigs.TIMER.BREAK_BLOCK_RADIUS.get();
-        double radius = ModConfigs.TIMER.EXPLOSION_RADIUS.get();
-        double visualRadius = ModConfigs.TIMER.EXPLOSION_VISUAL_RADIUS.get();
-        float power = ModConfigs.TIMER.EXPLOSION_STRENGTH.get().floatValue();
-
-        BlockPos center = new BlockPos(x, y, z);
-
-        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 1.0F, 1.0F);
-        sw.sendParticles(ParticleTypes.EXPLOSION, x, y, z, (int)(visualRadius * 4),
-                visualRadius / 2, visualRadius / 2, visualRadius / 2, 0.1);
-        sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, x, y, z, 1, 0, 0, 0, 0);
-
-        Explosion explosion = new Explosion(world, null, null, null, x, y, z, power, fire,
-                breakBlocks ? Explosion.Mode.DESTROY : Explosion.Mode.NONE);
-        explosion.explode();
-        explosion.finalizeExplosion(true);
-
-        // 🔧 Protection et effets secondaires
-        if (noItemDestroy) {
-            AxisAlignedBB area = new AxisAlignedBB(x-radius, y-radius, z-radius, x+radius, y+radius, z+radius);
-            List<ItemEntity> items = sw.getEntitiesOfClass(ItemEntity.class, area);
-            for (ItemEntity it : items) {
-                it.setInvulnerable(true);
-                Vector3d dir = it.position().subtract(x,y,z).normalize().scale(0.25);
-                it.setDeltaMovement(it.getDeltaMovement().add(dir));
-            }
-        }
-    }
-
-    /** 🔁 Active / désactive manuellement le minuteur */
     public static void toggleTimer(ItemStack stack) {
         CompoundNBT tag = stack.getOrCreateTag();
         boolean active = tag.getBoolean(NBT_ACTIVE);
         boolean hasStarted = tag.getBoolean(NBT_HAS_STARTED);
-        int remaining = tag.contains(NBT_REMAINING)
-                ? tag.getInt(NBT_REMAINING)
-                : getMaxTicks();
+        int remaining = tag.contains(NBT_REMAINING) ? tag.getInt(NBT_REMAINING) : getMaxTicks();
 
         if (!hasStarted && !active) {
             tag.putBoolean(NBT_ACTIVE, true);
