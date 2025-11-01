@@ -60,10 +60,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         this.entityData.define(DATA_REMAINING, TimerBimItem.getMaxTicks());
     }
 
-    @Override
-    protected Item getDefaultItem() {
-        return ModItems.TIMER_BIM.get();
-    }
+    @Override protected Item getDefaultItem() { return ModItems.TIMER_BIM.get(); }
 
     public void setTimerState(boolean active, boolean hasStarted, int remaining) {
         this.entityData.set(DATA_ACTIVE, active);
@@ -75,13 +72,13 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     public void tick() {
         super.tick();
 
-        // ✅ Gravité depuis ta config FR
+        // Gravité paramétrable
         if (!this.isNoGravity()) {
             Vector3d motion = this.getDeltaMovement();
             this.setDeltaMovement(motion.x, motion.y - ModConfigs.TIMER.POIDS_PROJECTILE.get(), motion.z);
         }
 
-        // Correction surface / sol
+        // Correction surface / sol (évite l’enfoncement)
         BlockPos pos = this.blockPosition();
         VoxelShape shape = level.getBlockState(pos).getCollisionShape(level, pos);
         if (!shape.isEmpty()) {
@@ -96,9 +93,8 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         if (!level.isClientSide && isActive() && getRemainingTicks() > 0) {
             int remaining = getRemainingTicks() - 1;
             this.entityData.set(DATA_REMAINING, remaining);
-
             if (remaining <= 0) {
-                safeExplosionWorld(level, getX(), getY(), getZ());
+                safeExplosionProjectile(level, getX(), getY(), getZ());
                 this.entityData.set(DATA_REMAINING, 0);
                 this.entityData.set(DATA_ACTIVE, false);
                 this.remove();
@@ -119,10 +115,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
 
     @Override
     protected void onHit(RayTraceResult hit) {
-        if (hit.getType() == RayTraceResult.Type.ENTITY) {
-            this.onHitEntity((EntityRayTraceResult) hit);
-            return;
-        }
+        if (hit.getType() == RayTraceResult.Type.ENTITY) { this.onHitEntity((EntityRayTraceResult) hit); return; }
         if (hit.getType() != RayTraceResult.Type.BLOCK || level.isClientSide) return;
 
         BlockRayTraceResult br = (BlockRayTraceResult) hit;
@@ -132,13 +125,13 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         Vector3d v = this.getDeltaMovement();
 
         double restitutionGround = ModConfigs.TIMER.RESTITUTION_GROUND.get();
-        double frictionGround = ModConfigs.TIMER.FRICTION_GROUND.get();
-        double restitutionWall = ModConfigs.TIMER.RESTITUTION_WALL.get();
-        double frictionWall = ModConfigs.TIMER.FRICTION_WALL.get();
-        double maxBounceUp = ModConfigs.TIMER.MAX_BOUNCE_UP.get();
-        double stopEps = ModConfigs.TIMER.STOP_EPS.get();
-        double popSpeedGate = 0.25;
-        double wallVerticalPop = 0.05;
+        double frictionGround    = ModConfigs.TIMER.FRICTION_GROUND.get();
+        double restitutionWall   = ModConfigs.TIMER.RESTITUTION_WALL.get();
+        double frictionWall      = ModConfigs.TIMER.FRICTION_WALL.get();
+        double maxBounceUp       = ModConfigs.TIMER.MAX_BOUNCE_UP.get();
+        double stopEps           = ModConfigs.TIMER.STOP_EPS.get();
+        double popSpeedGate      = 0.25;
+        double wallVerticalPop   = 0.05;
 
         switch (face) {
             case UP: {
@@ -186,10 +179,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
             }
         }
 
-        if (!hadFirstBounce) {
-            hadFirstBounce = true;
-            pickupDelay = 20;
-        }
+        if (!hadFirstBounce) { hadFirstBounce = true; pickupDelay = 20; }
     }
 
     @Override
@@ -197,7 +187,6 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         Entity target = hit.getEntity();
 
         if (!level.isClientSide) {
-            // ✅ utilise le champ IMPACT_HEARTS (dégâts d’impact direct)
             if (target instanceof LivingEntity) {
                 float dmg = (float) (double) ModConfigs.TIMER.IMPACT_HEARTS.get();
                 target.hurt(new IndirectEntityDamageSource("timer_bim", this, this.getOwner()).setProjectile(), dmg);
@@ -230,9 +219,7 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
         tag.putInt(TimerBimItem.NBT_REMAINING, Math.max(0, this.getRemainingTicks()));
         stack.setTag(tag);
 
-        if (player.addItem(stack)) {
-            this.remove();
-        }
+        if (player.addItem(stack)) this.remove();
     }
 
     private boolean isGrounded() {
@@ -251,51 +238,100 @@ public class TimerBimProjectileEntity extends ProjectileItemEntity {
     public int getRemainingTicks() { return this.entityData.get(DATA_REMAINING); }
 
     @Override
-    public IPacket<?> getAddEntityPacket() {
-        return NetworkHooks.getEntitySpawningPacket(this);
-    }
+    public IPacket<?> getAddEntityPacket() { return NetworkHooks.getEntitySpawningPacket(this); }
 
-    /** Explosion monde standard + dégâts custom. */
-    public static void safeExplosionWorld(World world, double x, double y, double z) {
+    /* ==================== EXPLOSIONS ==================== */
+
+    /** Explosion d’un projectile (dégâts custom, décroissance linéaire). */
+    public static void safeExplosionProjectile(World world, double x, double y, double z) {
         if (!(world instanceof ServerWorld)) return;
         ServerWorld sw = (ServerWorld) world;
 
         boolean breakBlocks = ModConfigs.TIMER.BREAK_BLOCKS.get();
-        boolean fire = ModConfigs.TIMER.CAUSES_FIRE.get();
+        boolean fire        = ModConfigs.TIMER.CAUSES_FIRE.get();
         boolean noItemDestroy = ModConfigs.TIMER.NO_ITEM_DESTROY.get();
 
-        double dmgEpic = ModConfigs.TIMER.MAX_DAMAGE_AT_EPICENTER.get();
-        double dmgOuter = ModConfigs.TIMER.INVENTORY_EXPLOSION_DAMAGE.get();
-        double radius = ModConfigs.TIMER.EXPLOSION_RADIUS.get();
-        double visualRad = ModConfigs.TIMER.EXPLOSION_VISUAL_RADIUS.get();
-        float power = (float) (double) ModConfigs.TIMER.EXPLOSION_STRENGTH.get();
+        double dmgEpic  = ModConfigs.TIMER.PROJECTILE_EPICENTER_DAMAGE.get();
+        double dmgOuter = ModConfigs.TIMER.PROJECTILE_RADIUS_DAMAGE.get();
+        double radius   = ModConfigs.TIMER.PROJECTILE_RADIUS.get();
 
+        // Sons/particules
         BlockPos center = new BlockPos(x, y, z);
         sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 1.0F, 1.0F);
-        sw.sendParticles(ParticleTypes.EXPLOSION, x, y, z, (int)(visualRad * 4), visualRad / 2, visualRad / 2, visualRad / 2, 0.1);
+        sw.sendParticles(ParticleTypes.EXPLOSION, x, y, z, (int)(radius * 3), radius/2, radius/2, radius/2, 0.1);
         sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, x, y, z, 1, 0, 0, 0, 0);
 
-        Explosion explosion = new Explosion(world, null, null, null, x, y, z, power, fire,
-                breakBlocks ? Explosion.Mode.DESTROY : Explosion.Mode.NONE);
-        explosion.explode();
-        explosion.finalizeExplosion(true);
+        // Option: casser des blocs (puissance = rayon, pas de config "strength" dédiée)
+        if (breakBlocks) {
+            Explosion ex = new Explosion(world, null, null, null, x, y, z, (float) radius, fire,
+                    Explosion.Mode.DESTROY);
+            ex.explode(); ex.finalizeExplosion(true);
+        }
 
-        AxisAlignedBB aabb = new AxisAlignedBB(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius);
-        List<LivingEntity> victims = sw.getEntitiesOfClass(LivingEntity.class, aabb, e -> e.isAlive());
+        // Dégâts
+        AxisAlignedBB aabb = new AxisAlignedBB(x - radius, y - radius, z - radius,
+                x + radius, y + radius, z + radius);
+        List<LivingEntity> victims = sw.getEntitiesOfClass(LivingEntity.class, aabb, Entity::isAlive);
         for (LivingEntity e : victims) {
-            double dx = e.getX() - x;
-            double dy = (e.getY() + e.getBbHeight() * 0.5) - y;
-            double dz = e.getZ() - z;
-            double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            double dist = Math.sqrt(e.distanceToSqr(x, y, z));
             if (dist > radius) continue;
+            double t = Math.min(1.0, Math.max(0.0, dist / radius));
+            float damage = (float) (dmgEpic * (1.0 - t) + dmgOuter * t);
+            e.hurt(DamageSource.explosion((Explosion) null), damage);
+        }
 
-            double t = Math.min(1.0, dist / radius);
-            double dmg = dmgEpic + (dmgOuter - dmgEpic) * t;
-            e.hurt(DamageSource.explosion((Explosion) null), (float) dmg);
+        // Protection des items si demandé
+        if (noItemDestroy) {
+            AxisAlignedBB area = new AxisAlignedBB(x - radius, y - radius, z - radius,
+                    x + radius, y + radius, z + radius);
+            List<ItemEntity> items = sw.getEntitiesOfClass(ItemEntity.class, area);
+            for (ItemEntity it : items) {
+                it.setInvulnerable(true);
+                Vector3d dir = it.position().subtract(x, y, z).normalize().scale(0.25);
+                it.setDeltaMovement(it.getDeltaMovement().add(dir));
+            }
+        }
+    }
+
+    /** Explosion d’un item droppé (dégâts custom, décroissance linéaire). */
+    public static void safeExplosionItem(World world, double x, double y, double z) {
+        if (!(world instanceof ServerWorld)) return;
+        ServerWorld sw = (ServerWorld) world;
+
+        boolean breakBlocks = ModConfigs.TIMER.BREAK_BLOCKS.get();
+        boolean fire        = ModConfigs.TIMER.CAUSES_FIRE.get();
+        boolean noItemDestroy = ModConfigs.TIMER.NO_ITEM_DESTROY.get();
+
+        double dmgEpic  = ModConfigs.TIMER.ITEM_EPICENTER_DAMAGE.get();
+        double dmgOuter = ModConfigs.TIMER.ITEM_RADIUS_DAMAGE.get();
+        double radius   = ModConfigs.TIMER.ITEM_RADIUS.get();
+
+        // Sons/particules
+        BlockPos center = new BlockPos(x, y, z);
+        sw.playSound(null, center, SoundEvents.GENERIC_EXPLODE, SoundCategory.BLOCKS, 1.0F, 1.0F);
+        sw.sendParticles(ParticleTypes.EXPLOSION, x, y, z, (int)(radius * 3), radius/2, radius/2, radius/2, 0.1);
+        sw.sendParticles(ParticleTypes.EXPLOSION_EMITTER, x, y, z, 1, 0, 0, 0, 0);
+
+        if (breakBlocks) {
+            Explosion ex = new Explosion(world, null, null, null, x, y, z, (float) radius, fire,
+                    Explosion.Mode.DESTROY);
+            ex.explode(); ex.finalizeExplosion(true);
+        }
+
+        AxisAlignedBB aabb = new AxisAlignedBB(x - radius, y - radius, z - radius,
+                x + radius, y + radius, z + radius);
+        List<LivingEntity> victims = sw.getEntitiesOfClass(LivingEntity.class, aabb, Entity::isAlive);
+        for (LivingEntity e : victims) {
+            double dist = Math.sqrt(e.distanceToSqr(x, y, z));
+            if (dist > radius) continue;
+            double t = Math.min(1.0, Math.max(0.0, dist / radius));
+            float damage = (float) (dmgEpic * (1.0 - t) + dmgOuter * t);
+            e.hurt(DamageSource.explosion((Explosion) null), damage);
         }
 
         if (noItemDestroy) {
-            AxisAlignedBB area = new AxisAlignedBB(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius);
+            AxisAlignedBB area = new AxisAlignedBB(x - radius, y - radius, z - radius,
+                    x + radius, y + radius, z + radius);
             List<ItemEntity> items = sw.getEntitiesOfClass(ItemEntity.class, area);
             for (ItemEntity it : items) {
                 it.setInvulnerable(true);
