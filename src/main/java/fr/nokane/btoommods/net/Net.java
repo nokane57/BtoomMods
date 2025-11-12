@@ -60,9 +60,13 @@ public final class Net {
                 RadarPingS2C::encode, RadarPingS2C::decode, RadarPingS2C::handle,
                 Optional.of(NetworkDirection.PLAY_TO_CLIENT));
 
-        // ✅ Ajout du packet de synchronisation radar
         CH.registerMessage(id++, RadarSyncS2C.class,
                 RadarSyncS2C::encode, RadarSyncS2C::decode, RadarSyncS2C::handle,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+
+        // ✅ AJOUT: Synchronisation des configs serveur → client
+        CH.registerMessage(id++, ConfigSyncS2C.class,
+                ConfigSyncS2C::encode, ConfigSyncS2C::decode, ConfigSyncS2C::handle,
                 Optional.of(NetworkDirection.PLAY_TO_CLIENT));
     }
 
