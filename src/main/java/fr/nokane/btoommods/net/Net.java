@@ -68,6 +68,10 @@ public final class Net {
         CH.registerMessage(id++, ConfigSyncS2C.class,
                 ConfigSyncS2C::encode, ConfigSyncS2C::decode, ConfigSyncS2C::handle,
                 Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+
+        CH.registerMessage(id++, RadarMessageS2C.class,
+                RadarMessageS2C::encode, RadarMessageS2C::decode, RadarMessageS2C::handle,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT));
     }
 
     public static void toPlayer(net.minecraft.entity.player.ServerPlayerEntity sp, Object msg) {

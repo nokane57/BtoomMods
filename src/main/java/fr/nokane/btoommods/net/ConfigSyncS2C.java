@@ -84,7 +84,7 @@ public class ConfigSyncS2C {
         configValues.put("radar.ignore_sneak", ModConfigs.RADAR.RADAR_IGNORE_SNEAK.get());
         configValues.put("radar.require_movement", ModConfigs.RADAR.RADAR_REQUIRE_MOVEMENT.get());
         configValues.put("radar.glow_visible_range", ModConfigs.RADAR.RADAR_GLOW_VISIBLE_RANGE.get());
-        configValues.put("radar.message_range", ModConfigs.RADAR.RADAR_MESSAGE_RANGE.get());
+        configValues.put("radar.message_range", ModConfigs.RADAR.ACTIVATION_MESSAGE.get());
 
         // ==================== GAS (ENABLED) ====================
         configValues.put("gas.enabled_stack", ModConfigs.GAS.GAS_ENABLED_STACK.get());
@@ -250,7 +250,7 @@ public class ConfigSyncS2C {
         applyValue(msg, "radar.ignore_sneak", ModConfigs.RADAR.RADAR_IGNORE_SNEAK);
         applyValue(msg, "radar.require_movement", ModConfigs.RADAR.RADAR_REQUIRE_MOVEMENT);
         applyValue(msg, "radar.glow_visible_range", ModConfigs.RADAR.RADAR_GLOW_VISIBLE_RANGE);
-        applyValue(msg, "radar.message_range", ModConfigs.RADAR.RADAR_MESSAGE_RANGE);
+        applyValue(msg, "radar.message_range", ModConfigs.RADAR.ACTIVATION_MESSAGE);
 
         // ==================== GAS (ENABLED) ====================
         applyValue(msg, "gas.enabled_stack", ModConfigs.GAS.GAS_ENABLED_STACK);

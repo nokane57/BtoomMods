@@ -6,22 +6,21 @@ import fr.nokane.btoommods.radar.RadarStorage;
 import fr.nokane.btoommods.sound.SoundUtils;
 import net.minecraft.entity.item.ItemEntity;
 import net.minecraft.entity.player.ServerPlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.Util;
 import net.minecraft.util.math.AxisAlignedBB;
-import net.minecraft.util.text.TranslationTextComponent;
-import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.network.PacketDistributor;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.*;
 import java.util.function.Supplier;
 
 public class RadarScanC2S {
 
+    private static final Logger LOGGER = LogManager.getLogger();
     private static final List<ActiveRadarWave> ACTIVE_WAVES = new ArrayList<>();
 
     public static void encode(RadarScanC2S msg, net.minecraft.network.PacketBuffer buf) {}
@@ -43,6 +42,13 @@ public class RadarScanC2S {
             int glowTicks = ModConfigs.RADAR.RADAR_GLOW_TICKS.get();
             boolean ignoreSneak = ModConfigs.RADAR.RADAR_IGNORE_SNEAK.get();
 
+            int baseGlowRange = ModConfigs.RADAR.RADAR_GLOW_VISIBLE_RANGE.get();
+            int messageActivation = ModConfigs.RADAR.ACTIVATION_MESSAGE.get();
+            int glowRange = baseGlowRange + (totalRadars - 1) * per;
+
+            LOGGER.info("[RADAR] Player {} scanning with {} radars - Radius: {}, Glow: [0-{}], Message activation: {}+",
+                    player.getName().getString(), totalRadars, radius, glowRange, messageActivation);
+
             SoundUtils.playWorldSound(world, player.getX(), player.getY(), player.getZ(),
                     fr.nokane.btoommods.sound.ModSounds.SONAR_ITEM.get(),
                     SoundUtils.VOL_SONAR, 1.0F);
@@ -50,7 +56,8 @@ public class RadarScanC2S {
             Net.CH.send(PacketDistributor.PLAYER.with(() -> player),
                     new RadarWaveS2C(player.getX(), player.getY(), player.getZ(), radius, duration));
 
-            ACTIVE_WAVES.add(new ActiveRadarWave(world, player, radius, duration, glowTicks, ignoreSneak));
+            ACTIVE_WAVES.add(new ActiveRadarWave(world, player, radius, duration, glowTicks,
+                    ignoreSneak, glowRange, messageActivation));
         });
         ctx.get().setPacketHandled(true);
     }
@@ -68,19 +75,28 @@ public class RadarScanC2S {
         private final ServerPlayerEntity origin;
         private final int maxRadius, duration, glowTicks;
         private final boolean ignoreSneak;
+        private final int glowRange;
+        private final int messageActivation;
         private int age = 0;
 
-        // État : glowing / message déjà envoyé
         private final Map<Integer, Boolean> entityGlowState = new HashMap<>();
+
+        // 🆕 Pour traquer si un message a déjà été envoyé pour cette entité lors de CE scan
         private final Set<Integer> messagedEntities = new HashSet<>();
 
-        ActiveRadarWave(ServerWorld w, ServerPlayerEntity o, int r, int d, int g, boolean s) {
+        ActiveRadarWave(ServerWorld w, ServerPlayerEntity o, int r, int d, int g, boolean s,
+                        int glowR, int msgActivation) {
             world = w;
             origin = o;
             maxRadius = r;
             duration = d;
             glowTicks = g;
             ignoreSneak = s;
+            glowRange = glowR;
+            messageActivation = msgActivation;
+
+            LOGGER.info("[RADAR WAVE] Created - MaxRadius: {}, GlowRange: [0-{}], Message activation: {}+",
+                    maxRadius, glowRange, messageActivation);
         }
 
         boolean tick() {
@@ -89,11 +105,10 @@ public class RadarScanC2S {
             double progress = (double) age / duration;
             double currentRadius = progress * maxRadius;
             double radiusSq = currentRadius * currentRadius;
-
-            double glowRange = ModConfigs.RADAR.RADAR_GLOW_VISIBLE_RANGE.get();
-            double messageRange = ModConfigs.RADAR.RADAR_MESSAGE_RANGE.get();
             double glowRangeSq = glowRange * glowRange;
-            double messageRangeSq = messageRange * messageRange;
+
+            LOGGER.debug("[RADAR WAVE] Tick {}/{}, currentRadius={}, glowRange={}, messageActivation={}",
+                    age, duration, (int)currentRadius, glowRange, messageActivation);
 
             // === Détection des joueurs ===
             for (ServerPlayerEntity target : world.players()) {
@@ -101,37 +116,81 @@ public class RadarScanC2S {
                 if (ignoreSneak && target.isCrouching() && target != origin) continue;
 
                 double distSq = origin.distanceToSqr(target);
+                double dist = Math.sqrt(distSq);
+
+                // Vérifie si dans le rayon de l'onde qui se propage
                 if (distSq > radiusSq) continue;
 
-                boolean wasGlowing = entityGlowState.getOrDefault(target.getId(), false);
-                boolean shouldGlow = distSq <= glowRangeSq;
+                LOGGER.debug("[RADAR WAVE] Target {} at distance {} - GlowRange: {}, MessageActivation: {}",
+                        target.getName().getString(), (int)dist, glowRange, messageActivation);
 
-                // 💚 Glow visible
-                if (!wasGlowing && shouldGlow) {
-                    Net.CH.send(PacketDistributor.PLAYER.with(() -> origin),
-                            new RadarGlowS2C(glowTicks, new int[]{target.getId()}));
-                    if (target != origin)
-                        Net.CH.send(PacketDistributor.PLAYER.with(() -> target),
-                                new RadarGlowS2C(glowTicks, new int[]{origin.getId()}));
-                    entityGlowState.put(target.getId(), true);
+                boolean wasGlowing = entityGlowState.getOrDefault(target.getId(), false);
+                boolean inGlowRange = dist <= glowRange;
+                boolean inMessageRange = dist >= messageActivation;
+
+                // 💚 Glow visible (0 - glowRange)
+                if (!wasGlowing && inGlowRange) {
+                    LOGGER.info("[RADAR SERVER] Applying glow to {} at {} blocks (glow range: {})",
+                            target.getName().getString(), (int)dist, glowRange);
+
+                    try {
+                        Net.CH.send(PacketDistributor.PLAYER.with(() -> origin),
+                                new RadarGlowS2C(glowTicks, new int[]{target.getId()}));
+
+                        if (target != origin) {
+                            Net.CH.send(PacketDistributor.PLAYER.with(() -> target),
+                                    new RadarGlowS2C(glowTicks, new int[]{origin.getId()}));
+                        }
+                        entityGlowState.put(target.getId(), true);
+                    } catch (Exception e) {
+                        LOGGER.error("[RADAR SERVER] Error sending glow packet", e);
+                    }
                 }
 
-                // 💬 Message unique au-delà du glow
-                else if (!shouldGlow && distSq <= messageRangeSq && !messagedEntities.contains(target.getId())) {
-                    double dist = Math.sqrt(distSq);
-                    origin.sendMessage(
-                            new TranslationTextComponent("message.btoommods.radar.detected_player",
-                                    target.getName().getString(), (int) dist,
-                                    (int) target.getX(), (int) target.getY(), (int) target.getZ())
-                                    .withStyle(TextFormatting.AQUA),
-                            Util.NIL_UUID);
-                    target.sendMessage(
-                            new TranslationTextComponent("message.btoommods.radar.alert_target",
+                // 💬 Messages (distance >= messageActivation)
+                // ✅ Envoyer UN SEUL message par entité pour tout ce scan
+                if (inMessageRange && !messagedEntities.contains(target.getId())) {
+                    int currentDist = (int)dist;
+
+                    LOGGER.info("[RADAR SERVER] Player {} detected {} at {} blocks (message activation: {})",
+                            origin.getName().getString(), target.getName().getString(),
+                            currentDist, messageActivation);
+
+                    try {
+                        // Message pour le scanneur
+                        RadarMessageS2C scannerMsg = new RadarMessageS2C(
+                                RadarMessageS2C.MessageType.DETECTED_PLAYER,
+                                target.getName().getString(),
+                                currentDist,
+                                (int) target.getX(),
+                                (int) target.getY(),
+                                (int) target.getZ()
+                        );
+
+                        LOGGER.info("[RADAR SERVER] Sending DETECTED_PLAYER to scanner");
+                        Net.CH.send(PacketDistributor.PLAYER.with(() -> origin), scannerMsg);
+
+                        // Message pour la cible
+                        if (target != origin) {
+                            RadarMessageS2C alertMsg = new RadarMessageS2C(
+                                    RadarMessageS2C.MessageType.ALERT_TARGET,
                                     origin.getName().getString(),
-                                    (int) origin.getX(), (int) origin.getY(), (int) origin.getZ())
-                                    .withStyle(TextFormatting.RED),
-                            Util.NIL_UUID);
-                    messagedEntities.add(target.getId());
+                                    (int) origin.getX(),
+                                    (int) origin.getY(),
+                                    (int) origin.getZ(),
+                                    0
+                            );
+
+                            LOGGER.info("[RADAR SERVER] Sending ALERT_TARGET to target");
+                            Net.CH.send(PacketDistributor.PLAYER.with(() -> target), alertMsg);
+                        }
+
+                        // ✅ Marquer cette entité comme "déjà notifiée" pour ce scan
+                        messagedEntities.add(target.getId());
+
+                    } catch (Exception e) {
+                        LOGGER.error("[RADAR SERVER] Error sending message packets", e);
+                    }
                 }
             }
 
@@ -148,23 +207,43 @@ public class RadarScanC2S {
                 if (item.getItem().getItem() != ModItems.RADAR_ITEM.get()) continue;
 
                 double distSq = origin.distanceToSqr(item);
-                boolean wasGlowing = entityGlowState.getOrDefault(item.getId(), false);
-                boolean shouldGlow = distSq <= glowRangeSq;
+                double dist = Math.sqrt(distSq);
 
-                if (!wasGlowing && shouldGlow) {
+                boolean wasGlowing = entityGlowState.getOrDefault(item.getId(), false);
+                boolean inGlowRange = dist <= glowRange;
+                boolean inMessageRange = dist >= messageActivation;
+
+                // Glow pour les objets
+                if (!wasGlowing && inGlowRange) {
+                    LOGGER.info("[RADAR SERVER] Applying glow to radar item at {} blocks", (int)dist);
                     Net.CH.send(PacketDistributor.PLAYER.with(() -> origin),
                             new RadarGlowS2C(glowTicks, new int[]{item.getId()}));
                     entityGlowState.put(item.getId(), true);
                 }
-                // 💬 Message unique pour chaque objet radar
-                else if (!shouldGlow && distSq <= messageRangeSq && !messagedEntities.contains(item.getId())) {
-                    double dist = Math.sqrt(distSq);
-                    origin.sendMessage(
-                            new TranslationTextComponent("message.btoommods.radar.detected_object",
-                                    (int) dist, (int) item.getX(), (int) item.getY(), (int) item.getZ())
-                                    .withStyle(TextFormatting.GRAY),
-                            Util.NIL_UUID);
-                    messagedEntities.add(item.getId());
+
+                // ✅ Message unique par objet pour ce scan
+                if (inMessageRange && !messagedEntities.contains(item.getId())) {
+                    int currentDist = (int)dist;
+
+                    LOGGER.info("[RADAR SERVER] Sending DETECTED_OBJECT message at {} blocks (activation: {})",
+                            currentDist, messageActivation);
+
+                    try {
+                        Net.CH.send(PacketDistributor.PLAYER.with(() -> origin),
+                                new RadarMessageS2C(
+                                        RadarMessageS2C.MessageType.DETECTED_OBJECT,
+                                        currentDist,
+                                        (int) item.getX(),
+                                        (int) item.getY(),
+                                        (int) item.getZ()
+                                ));
+
+                        // ✅ Marquer cet objet comme "déjà notifié"
+                        messagedEntities.add(item.getId());
+
+                    } catch (Exception e) {
+                        LOGGER.error("[RADAR SERVER] Error sending object message", e);
+                    }
                 }
             }
 
