@@ -31,6 +31,12 @@ public class RadarScanC2S {
             ServerPlayerEntity player = ctx.get().getSender();
             if (player == null) return;
 
+            // ❌ Empêcher les spectateurs d'utiliser le radar
+            if (player.isSpectator()) {
+                LOGGER.info("[RADAR] Player {} cannot use radar in spectator mode", player.getName().getString());
+                return;
+            }
+
             ServerWorld world = player.getLevel();
             int totalRadars = RadarStorage.get(player);
             if (totalRadars <= 0) return;
@@ -80,8 +86,6 @@ public class RadarScanC2S {
         private int age = 0;
 
         private final Map<Integer, Boolean> entityGlowState = new HashMap<>();
-
-        // 🆕 Pour traquer si un message a déjà été envoyé pour cette entité lors de CE scan
         private final Set<Integer> messagedEntities = new HashSet<>();
 
         ActiveRadarWave(ServerWorld w, ServerPlayerEntity o, int r, int d, int g, boolean s,
@@ -118,7 +122,6 @@ public class RadarScanC2S {
                 double distSq = origin.distanceToSqr(target);
                 double dist = Math.sqrt(distSq);
 
-                // Vérifie si dans le rayon de l'onde qui se propage
                 if (distSq > radiusSq) continue;
 
                 LOGGER.debug("[RADAR WAVE] Target {} at distance {} - GlowRange: {}, MessageActivation: {}",
@@ -148,7 +151,6 @@ public class RadarScanC2S {
                 }
 
                 // 💬 Messages (distance >= messageActivation)
-                // ✅ Envoyer UN SEUL message par entité pour tout ce scan
                 if (inMessageRange && !messagedEntities.contains(target.getId())) {
                     int currentDist = (int)dist;
 
@@ -157,7 +159,6 @@ public class RadarScanC2S {
                             currentDist, messageActivation);
 
                     try {
-                        // Message pour le scanneur
                         RadarMessageS2C scannerMsg = new RadarMessageS2C(
                                 RadarMessageS2C.MessageType.DETECTED_PLAYER,
                                 target.getName().getString(),
@@ -170,7 +171,6 @@ public class RadarScanC2S {
                         LOGGER.info("[RADAR SERVER] Sending DETECTED_PLAYER to scanner");
                         Net.CH.send(PacketDistributor.PLAYER.with(() -> origin), scannerMsg);
 
-                        // Message pour la cible
                         if (target != origin) {
                             RadarMessageS2C alertMsg = new RadarMessageS2C(
                                     RadarMessageS2C.MessageType.ALERT_TARGET,
@@ -185,7 +185,6 @@ public class RadarScanC2S {
                             Net.CH.send(PacketDistributor.PLAYER.with(() -> target), alertMsg);
                         }
 
-                        // ✅ Marquer cette entité comme "déjà notifiée" pour ce scan
                         messagedEntities.add(target.getId());
 
                     } catch (Exception e) {
@@ -213,7 +212,6 @@ public class RadarScanC2S {
                 boolean inGlowRange = dist <= glowRange;
                 boolean inMessageRange = dist >= messageActivation;
 
-                // Glow pour les objets
                 if (!wasGlowing && inGlowRange) {
                     LOGGER.info("[RADAR SERVER] Applying glow to radar item at {} blocks", (int)dist);
                     Net.CH.send(PacketDistributor.PLAYER.with(() -> origin),
@@ -221,7 +219,6 @@ public class RadarScanC2S {
                     entityGlowState.put(item.getId(), true);
                 }
 
-                // ✅ Message unique par objet pour ce scan
                 if (inMessageRange && !messagedEntities.contains(item.getId())) {
                     int currentDist = (int)dist;
 
@@ -238,7 +235,6 @@ public class RadarScanC2S {
                                         (int) item.getZ()
                                 ));
 
-                        // ✅ Marquer cet objet comme "déjà notifié"
                         messagedEntities.add(item.getId());
 
                     } catch (Exception e) {

@@ -11,6 +11,8 @@ import net.minecraft.util.*;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.world.World;
 
+import java.util.UUID;
+
 import static fr.nokane.btoommods.sound.ModSounds.PI_ITEM;
 
 public class RemoteBimItem extends Item {
@@ -47,19 +49,43 @@ public class RemoteBimItem extends Item {
 
         if (!level.isClientSide) {
 
-            // 🔒 Vérifications limites
+            // ✅ UTILISE LE BRACELET ACTIF DU JOUEUR
+            ItemStack bracelet = RemoteBraceletManager.getActiveBracelet(player);
+            if (bracelet.isEmpty()) {
+                // ❌ Pas de bracelet actif = impossible de lancer
+                level.playSound(null, player.blockPosition(), SoundEvents.VILLAGER_NO, SoundCategory.PLAYERS, 0.5F, 1.0F);
+                player.displayClientMessage(
+                        new net.minecraft.util.text.StringTextComponent("§c§l[!] §cAucun bracelet Remote actif !"),
+                        true
+                );
+                return;
+            }
+
+            // ✅ RÉCUPÈRE L'UUID DU BRACELET ACTIF
+            UUID braceletUUID = RemoteBraceletItem.getBraceletUUID(bracelet);
+            if (braceletUUID == null) {
+                level.playSound(null, player.blockPosition(), SoundEvents.VILLAGER_NO, SoundCategory.PLAYERS, 0.5F, 1.0F);
+                return;
+            }
+
+            // 🔒 Vérifications limites (basées sur le bracelet actif)
             int maxActive = ModConfigs.REMOTE.REMOTE_MAX_ACTIVE.get();
             int maxGlobal = ModConfigs.REMOTE.MAX_REMOTE.get();
             int scan = ModConfigs.REMOTE.REMOTE_SCAN_RADIUS.get();
 
+            // ✅ Compte les Remote BIMs liés au bracelet ACTIF uniquement
             int active = level.getEntitiesOfClass(
                     RemoteBimEntity.class,
                     player.getBoundingBox().inflate(scan),
-                    e -> e.getOwner() != null && e.getOwner().getUUID().equals(player.getUUID())
+                    e -> braceletUUID.equals(e.getBraceletUUID())
             ).size();
 
             if (active >= maxActive) {
                 level.playSound(null, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK, SoundCategory.PLAYERS, 0.5F, 0.5F);
+                player.displayClientMessage(
+                        new net.minecraft.util.text.StringTextComponent("§c§l[!] §cLimite de Remote BIMs atteinte pour ce bracelet !"),
+                        true
+                );
                 return;
             }
 
@@ -82,12 +108,15 @@ public class RemoteBimItem extends Item {
                 proj.setItem(stack.copy());
                 proj.setPos(player.getX(), player.getEyeY() - 0.1D, player.getZ());
 
+                // ✅ ASSOCIE LE REMOTE BIM AU BRACELET ACTIF
+                proj.setBraceletUUID(braceletUUID);
+
                 // ⚖️ Vitesse basée sur le poids
                 double poids = Math.max(0.1, ModConfigs.REMOTE.POIDS_PROJECTILE.get());
                 double vitesseBase = 1.7D * power * ModConfigs.REMOTE.VITESSE_PROJECTILE.get();
                 float vitesseFinale = (float) (vitesseBase / Math.sqrt(poids));
 
-                // 🏹 Tir sans arc excessif
+                // 🹠Tir sans arc excessif
                 proj.shootFromRotation(player, player.xRot, player.yRot, 0.0F, vitesseFinale, 0.8F);
 
                 // ✅ Slot automatique
@@ -108,7 +137,7 @@ public class RemoteBimItem extends Item {
         if (!level.isClientSide)
             player.getPersistentData().putInt("remote_cooldown", cooldown);
 
-        // Stat + retrait d’item
+        // Stat + retrait d'item
         player.awardStat(Stats.ITEM_USED.get(this));
         if (!player.abilities.instabuild) stack.shrink(1);
     }

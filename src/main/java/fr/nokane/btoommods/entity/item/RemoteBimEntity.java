@@ -2,6 +2,8 @@ package fr.nokane.btoommods.entity.item;
 
 import fr.nokane.btoommods.config.ModConfigs;
 import fr.nokane.btoommods.item.ModItems;
+import fr.nokane.btoommods.item.RemoteBraceletItem;
+import fr.nokane.btoommods.item.RemoteBraceletManager;
 import fr.nokane.btoommods.net.GlowS2C;
 import fr.nokane.btoommods.net.Net;
 import fr.nokane.btoommods.net.RemoteOwnerMarkerS2C;
@@ -35,6 +37,9 @@ public class RemoteBimEntity extends ProjectileItemEntity {
 
     private int ownerMarkerCooldown = 0;
 
+    // ✅ UUID du bracelet auquel ce Remote BIM est affilié
+    private UUID braceletUUID;
+
     public RemoteBimEntity(EntityType<? extends RemoteBimEntity> type, World level) {
         super(type, level);
     }
@@ -55,16 +60,69 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         return ModItems.REMOTE_BIM.get();
     }
 
-    public int getSlot() { return Math.max(1, Math.min(8, this.entityData.get(SLOT_ID))); }
-    public void setSlot(int s) { this.entityData.set(SLOT_ID, Math.max(1, Math.min(8, s))); }
+    public int getSlot() {
+        return Math.max(1, Math.min(8, this.entityData.get(SLOT_ID)));
+    }
 
-    public boolean isStuck() { return this.entityData.get(STUCK); }
-    private void setStuck(boolean b) { this.entityData.set(STUCK, b); }
+    public void setSlot(int s) {
+        this.entityData.set(SLOT_ID, Math.max(1, Math.min(8, s)));
+    }
+
+    public boolean isStuck() {
+        return this.entityData.get(STUCK);
+    }
+
+    private void setStuck(boolean b) {
+        this.entityData.set(STUCK, b);
+    }
+
+    // ✅ Récupère l'UUID du bracelet associé
+    public UUID getBraceletUUID() {
+        return this.braceletUUID;
+    }
+
+    // ✅ Définit l'UUID du bracelet
+    public void setBraceletUUID(UUID uuid) {
+        this.braceletUUID = uuid;
+    }
+
+    // ✅ Trouve le joueur qui possède actuellement le bracelet associé
+    // ✅ Mise à jour de la méthode getCurrentBraceletHolder dans RemoteBimEntity.java
+
+    /**
+     * ✅ Trouve le joueur qui possède actuellement le bracelet associé ET l'a actif
+     * Cette méthode cherche maintenant le joueur qui a CE bracelet comme bracelet actif
+     */
+    public ServerPlayerEntity getCurrentBraceletHolder() {
+        if (braceletUUID == null || !(level instanceof ServerWorld)) {
+            return null;
+        }
+
+        ServerWorld sw = (ServerWorld) level;
+
+        // Cherche parmi TOUS les joueurs en ligne
+        for (ServerPlayerEntity player : sw.players()) {
+            // ✅ Vérifie si le joueur a ce bracelet comme bracelet actif
+            UUID playerActiveBraceletUUID = RemoteBraceletManager.getActiveBraceletUUID(player);
+            if (braceletUUID.equals(playerActiveBraceletUUID)) {
+                // Double vérification : le joueur possède-t-il réellement ce bracelet ?
+                ItemStack bracelet = RemoteBraceletManager.getActiveBracelet(player);
+                if (!bracelet.isEmpty()) {
+                    UUID actualUUID = RemoteBraceletItem.getBraceletUUID(bracelet);
+                    if (braceletUUID.equals(actualUUID)) {
+                        return player;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
 
     @Override
     protected float getGravity() {
         double poids = Math.max(0.1, ModConfigs.REMOTE.POIDS_PROJECTILE.get());
-        return (float)(0.03D / poids);
+        return (float) (0.03D / poids);
     }
 
     @Override
@@ -74,14 +132,9 @@ public class RemoteBimEntity extends ProjectileItemEntity {
 
     @Override
     public boolean shouldRenderAtSqrDistance(double dist) {
-        // ✅ Force le rendu jusqu’à ~400 blocs (400 * 400 = 160000)
-        // ou même plus si tu veux le voir à l’infini
         return dist < 400 * 400;
     }
 
-
-
-    // --- ces trois méthodes NE doivent PAS avoir @Override en 1.16.5 ---
     public boolean shouldRenderName() {
         return false;
     }
@@ -105,31 +158,29 @@ public class RemoteBimEntity extends ProjectileItemEntity {
             this.setPos(this.getX(), this.getY(), this.getZ());
 
             if (!level.isClientSide) {
-                Entity owner = this.getOwner();
-                if (owner instanceof ServerPlayerEntity) {
-                    ServerPlayerEntity sp = (ServerPlayerEntity) owner;
+                // ✅ Utilise le possesseur actuel du bracelet
+                ServerPlayerEntity braceletHolder = getCurrentBraceletHolder();
+                if (braceletHolder != null) {
                     if (ownerMarkerCooldown-- <= 0) {
                         ownerMarkerCooldown = 40;
                         int slot = getSlot();
                         int color = getServerSlotColor(slot);
 
-                        // ✅ Glow visible uniquement pour le propriétaire
-                        Net.toPlayer(sp, new GlowS2C(60, new int[]{this.getId()}, color));
+                        Net.toPlayer(braceletHolder, new GlowS2C(60, new int[]{this.getId()}, color));
 
-                        // ✅ Si le joueur est loin, afficher un repère de particules
-                        double distSqr = sp.distanceToSqr(this);
+                        double distSqr = braceletHolder.distanceToSqr(this);
                         if (distSqr > 50 * 50) {
-                            Net.toPlayer(sp, new RemoteOwnerMarkerS2C(this.getX(), this.getY() + 0.2, this.getZ()));
+                            Net.toPlayer(braceletHolder, new RemoteOwnerMarkerS2C(this.getX(), this.getY() + 0.2, this.getZ()));
                         }
                     }
                 }
-                tryOwnerSneakPickup();
+                tryBraceletHolderSneakPickup();
             }
             return;
         }
 
         if (!level.isClientSide) {
-            if (tryOwnerSneakPickup()) return;
+            if (tryBraceletHolderSneakPickup()) return;
             int lifetime = ModConfigs.REMOTE.REMOTE_LIFETIME_TICKS.get();
             if (this.tickCount > lifetime) this.remove();
         }
@@ -189,24 +240,28 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         if (breakBlocks) {
             int r = (int) Math.ceil(blockBreakRadius);
             BlockPos.Mutable pos = new BlockPos.Mutable();
-            for (int x = -r; x <= r; x++) for (int y = -r; y <= r; y++) for (int z = -r; z <= r; z++) {
-                pos.set(center.getX() + x, center.getY() + y, center.getZ() + z);
-                double d = Math.sqrt(x * x + y * y + z * z);
-                if (d <= blockBreakRadius && !sw.isEmptyBlock(pos)
-                        && sw.getBlockState(pos).getExplosionResistance(sw, pos, null) < 200.0F) {
-                    sw.destroyBlock(pos, true);
-                }
-            }
+            for (int x = -r; x <= r; x++)
+                for (int y = -r; y <= r; y++)
+                    for (int z = -r; z <= r; z++) {
+                        pos.set(center.getX() + x, center.getY() + y, center.getZ() + z);
+                        double d = Math.sqrt(x * x + y * y + z * z);
+                        if (d <= blockBreakRadius && !sw.isEmptyBlock(pos)
+                                && sw.getBlockState(pos).getExplosionResistance(sw, pos, null) < 200.0F) {
+                            sw.destroyBlock(pos, true);
+                        }
+                    }
         }
 
         AxisAlignedBB aabb = new AxisAlignedBB(getX() - radius, getY() - radius, getZ() - radius,
                 getX() + radius, getY() + radius, getZ() + radius);
 
-        LivingEntity ownerLE = null;
-        if (this.getOwner() instanceof LivingEntity)
-            ownerLE = (LivingEntity) this.getOwner();
+        // ✅ Utilise le possesseur du bracelet pour la source des dégâts
+        LivingEntity damageSource = getCurrentBraceletHolder();
+        if (damageSource == null && this.getOwner() instanceof LivingEntity) {
+            damageSource = (LivingEntity) this.getOwner();
+        }
 
-        DamageSource src = DamageSource.explosion(ownerLE);
+        DamageSource src = DamageSource.explosion(damageSource);
 
         List<Entity> list = sw.getEntities(this, aabb, new java.util.function.Predicate<Entity>() {
             @Override
@@ -227,15 +282,15 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         this.remove();
     }
 
-    private boolean tryOwnerSneakPickup() {
-        Entity owner = this.getOwner();
-        if (!(owner instanceof ServerPlayerEntity)) return false;
-        ServerPlayerEntity sp = (ServerPlayerEntity) owner;
-        if (!sp.isShiftKeyDown() || this.tickCount < SNEAK_RECALL_MIN_AGE) return false;
-        if (this.distanceToSqr(sp) > SNEAK_RECALL_RADIUS * SNEAK_RECALL_RADIUS) return false;
+    // ✅ Ramassage par le possesseur du bracelet
+    private boolean tryBraceletHolderSneakPickup() {
+        ServerPlayerEntity braceletHolder = getCurrentBraceletHolder();
+        if (braceletHolder == null) return false;
+        if (!braceletHolder.isShiftKeyDown() || this.tickCount < SNEAK_RECALL_MIN_AGE) return false;
+        if (this.distanceToSqr(braceletHolder) > SNEAK_RECALL_RADIUS * SNEAK_RECALL_RADIUS) return false;
 
         ItemStack give = this.getItem().isEmpty() ? new ItemStack(getDefaultItem()) : this.getItem().copy();
-        if (!sp.addItem(give)) sp.drop(give, false);
+        if (!braceletHolder.addItem(give)) braceletHolder.drop(give, false);
         this.remove();
         return true;
     }
@@ -245,6 +300,11 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         super.addAdditionalSaveData(nbt);
         nbt.putInt("Slot", getSlot());
         nbt.putBoolean("Stuck", isStuck());
+
+        // ✅ Sauvegarde l'UUID du bracelet
+        if (this.braceletUUID != null) {
+            nbt.putUUID("BraceletUUID", this.braceletUUID);
+        }
     }
 
     @Override
@@ -252,21 +312,35 @@ public class RemoteBimEntity extends ProjectileItemEntity {
         super.readAdditionalSaveData(nbt);
         setSlot(nbt.getInt("Slot"));
         setStuck(nbt.getBoolean("Stuck"));
+
+        // ✅ Charge l'UUID du bracelet
+        if (nbt.hasUUID("BraceletUUID")) {
+            this.braceletUUID = nbt.getUUID("BraceletUUID");
+        }
     }
 
     public void assignSlotAuto() {
-        if (!(level instanceof ServerWorld)) { setSlot(1); return; }
+        if (!(level instanceof ServerWorld)) {
+            setSlot(1);
+            return;
+        }
         ServerWorld sw = (ServerWorld) level;
-        UUID me = (getOwner() != null ? getOwner().getUUID() : new UUID(0, 0));
+
+        // ✅ Si pas de bracelet associé, impossible d'assigner un slot
+        if (braceletUUID == null) {
+            setSlot(1);
+            return;
+        }
+
         int scan = ModConfigs.REMOTE.REMOTE_SCAN_RADIUS.get();
 
         AxisAlignedBB box = new AxisAlignedBB(getX() - scan, getY() - scan, getZ() - scan,
                 getX() + scan, getY() + scan, getZ() + scan);
 
         Set<Integer> taken = new HashSet<>();
+        // ✅ Compte les slots utilisés par le MÊME bracelet
         for (RemoteBimEntity e : sw.getEntitiesOfClass(RemoteBimEntity.class, box)) {
-            Entity eo = e.getOwner();
-            if (eo != null && eo.getUUID().equals(me)) {
+            if (braceletUUID.equals(e.getBraceletUUID())) {
                 taken.add(e.getSlot());
             }
         }
